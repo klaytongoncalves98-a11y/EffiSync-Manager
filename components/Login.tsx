@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { GoogleIcon, ScissorsIcon } from './icons';
 import Modal from './Modal';
 import { auth, googleProvider } from '../services/firebase';
-import { signInWithPopup } from 'firebase/auth';
+import { signInWithPopup, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 
 interface LoginProps {
   onLogin: (rememberMe: boolean, email: string) => void;
@@ -39,89 +39,117 @@ const Login: React.FC<LoginProps> = ({ onLogin, shopLogoUrl }) => {
       return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setSuccessMessage('');
     setIsLoading(true);
 
-    // Local Login Logic (Legacy/Manual)
+    // 1. Firebase Authentication (Real)
+    if (auth) {
+        try {
+            if (isRegistering) {
+                // REGISTRATION
+                if (!email || !password || !confirmPassword) throw new Error('Preencha todos os campos.');
+                if (!isValidEmail(email)) throw new Error('Por favor, insira um email válido.');
+                if (password !== confirmPassword) throw new Error('As senhas não coincidem.');
+                if (password.length < 6) throw new Error('A senha deve ter pelo menos 6 caracteres.');
+
+                await createUserWithEmailAndPassword(auth, email, password);
+                // Auth listener in App.tsx will handle the rest (redirect/state update)
+                // We set local flags just for immediate UI response if needed, but App.tsx drives the view
+                if (rememberMe) localStorage.setItem('effisync_session', 'active');
+                
+            } else {
+                // LOGIN
+                await signInWithEmailAndPassword(auth, email, password);
+                if (rememberMe) localStorage.setItem('effisync_session', 'active');
+            }
+        } catch (err: any) {
+            console.error("Firebase Auth Error:", err);
+            let msg = 'Ocorreu um erro. Tente novamente.';
+            
+            // Map Firebase errors to Portuguese
+            switch (err.code) {
+                case 'auth/email-already-in-use': msg = 'Este email já está cadastrado.'; break;
+                case 'auth/invalid-email': msg = 'Email inválido.'; break;
+                case 'auth/user-not-found': 
+                case 'auth/wrong-password': 
+                case 'auth/invalid-credential': msg = 'Email ou senha incorretos.'; break;
+                case 'auth/weak-password': msg = 'A senha é muito fraca.'; break;
+                case 'auth/network-request-failed': msg = 'Erro de conexão. Verifique sua internet.'; break;
+                case 'auth/too-many-requests': msg = 'Muitas tentativas. Tente novamente mais tarde.'; break;
+                default: if(err.message) msg = err.message;
+            }
+            setError(msg);
+            setIsLoading(false); 
+        }
+        return;
+    }
+
+    // 2. Local Storage Fallback (Only if Firebase is NOT configured)
     setTimeout(() => {
         const storedUsers = localStorage.getItem('effisync_users');
         const users = storedUsers ? JSON.parse(storedUsers) : [];
 
         if (isRegistering) {
-            // REGISTRATION LOGIC
-            if (!email || !password || !confirmPassword) {
-                setError('Preencha todos os campos.');
-                setIsLoading(false);
-                return;
-            }
-
-            if (!isValidEmail(email)) {
-                setError('Por favor, insira um email válido.');
-                setIsLoading(false);
-                return;
-            }
-
-            if (password !== confirmPassword) {
-                setError('As senhas não coincidem.');
-                setIsLoading(false);
-                return;
-            }
-
-            if (password.length < 4) {
-                 setError('A senha deve ter pelo menos 4 caracteres.');
-                 setIsLoading(false);
-                 return;
-            }
+            if (!email || !password || !confirmPassword) { setError('Preencha todos os campos.'); setIsLoading(false); return; }
+            if (!isValidEmail(email)) { setError('Por favor, insira um email válido.'); setIsLoading(false); return; }
+            if (password !== confirmPassword) { setError('As senhas não coincidem.'); setIsLoading(false); return; }
+            if (password.length < 4) { setError('A senha deve ter pelo menos 4 caracteres.'); setIsLoading(false); return; }
 
             const userExists = users.find((u: any) => u.email.toLowerCase() === email.toLowerCase());
-            if (userExists) {
-                setError('Este email já está cadastrado.');
-                setIsLoading(false);
-                return;
-            }
+            if (userExists) { setError('Este email já está cadastrado (Local).'); setIsLoading(false); return; }
 
             const newUser = { email, password: btoa(password) }; 
             users.push(newUser);
             localStorage.setItem('effisync_users', JSON.stringify(users));
             
-            setSuccessMessage('Conta criada com sucesso! Faça login.');
+            setSuccessMessage('Conta local criada! Faça login.');
             setIsRegistering(false);
-            setEmail('');
-            setPassword('');
-            setConfirmPassword('');
+            setEmail(''); setPassword(''); setConfirmPassword('');
             setIsLoading(false);
 
         } else {
-            // LOGIN LOGIC
             const validUser = users.find((u: any) => 
                 u.email.toLowerCase() === email.toLowerCase() && 
                 (u.password === password || u.password === btoa(password))
             );
-
             const isLegacyAdmin = users.length === 0 && email.toLowerCase() === 'admin' && password === 'admin';
 
             if (validUser || isLegacyAdmin) {
                 onLogin(rememberMe, email);
             } else {
-                setError('Email ou senha incorretos.');
+                setError('Email ou senha incorretos (Local).');
             }
             setIsLoading(false);
         }
     }, 800);
   };
 
-  const handleForgotPassword = (e: React.FormEvent) => {
+  const handleForgotPassword = async (e: React.FormEvent) => {
       e.preventDefault();
+      
+      if (!auth) {
+          setError('A recuperação de senha requer a configuração do Firebase (Real Auth).');
+          return;
+      }
+
       setIsLoading(true);
-      setTimeout(() => {
-          setIsLoading(false);
-          setIsForgotPasswordOpen(false);
-          setSuccessMessage(`Um link de redefinição foi enviado para ${forgotEmail} (Simulação).`);
+      try {
+          await sendPasswordResetEmail(auth, forgotEmail);
+          setSuccessMessage(`Link enviado para ${forgotEmail}. Verifique sua caixa de entrada (e spam).`);
           setForgotEmail('');
-      }, 1500);
+          setTimeout(() => setIsForgotPasswordOpen(false), 5000);
+      } catch (err: any) {
+          console.error("Reset Password Error:", err);
+          let msg = 'Erro ao enviar email.';
+          if (err.code === 'auth/user-not-found') msg = 'Email não encontrado no sistema.';
+          if (err.code === 'auth/invalid-email') msg = 'Email inválido.';
+          setError(msg);
+      } finally {
+          setIsLoading(false);
+      }
   };
 
   const handleGoogleLogin = async () => {
@@ -151,6 +179,9 @@ const Login: React.FC<LoginProps> = ({ onLogin, shopLogoUrl }) => {
     }
   };
 
+  // Helper to check if Firebase is active
+  const isFirebaseActive = !!auth;
+
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-900">
       <div className="w-full max-w-md p-8 space-y-8 bg-gray-800 rounded-lg shadow-lg animate-fade-in-down">
@@ -168,6 +199,11 @@ const Login: React.FC<LoginProps> = ({ onLogin, shopLogoUrl }) => {
                 ? "Crie sua conta profissional." 
                 : "Bem-vindo de volta! Acesse sua conta."}
           </p>
+          {!isFirebaseActive && (
+              <p className="text-xs text-yellow-500 mt-2 bg-yellow-900/20 p-1 rounded">
+                  Modo Local (Sem backend configurado)
+              </p>
+          )}
         </div>
 
         <form className="space-y-6" onSubmit={handleSubmit}>
@@ -303,7 +339,7 @@ const Login: React.FC<LoginProps> = ({ onLogin, shopLogoUrl }) => {
                 <button
                     type="button"
                     onClick={handleGoogleLogin}
-                    disabled={isLoading}
+                    disabled={isLoading || !isFirebaseActive}
                     className="w-full flex justify-center items-center px-4 py-2 font-medium text-white bg-gray-700 border border-gray-600 rounded-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-gray-500 transition-colors disabled:opacity-50"
                 >
                     <GoogleIcon className="w-5 h-5 mr-3" />
@@ -318,8 +354,13 @@ const Login: React.FC<LoginProps> = ({ onLogin, shopLogoUrl }) => {
       <Modal isOpen={isForgotPasswordOpen} onClose={() => setIsForgotPasswordOpen(false)} title="Recuperar Senha">
           <form onSubmit={handleForgotPassword} className="space-y-4">
               <p className="text-gray-300 text-sm">
-                  Digite seu email abaixo e enviaremos um link para você redefinir sua senha.
+                  Digite seu email abaixo e enviaremos um link oficial para você redefinir sua senha.
               </p>
+              {!isFirebaseActive && (
+                  <p className="text-red-400 text-xs bg-red-900/20 p-2 rounded">
+                      Erro: Configuração do Firebase não detectada. O envio de email não funcionará.
+                  </p>
+              )}
               <div>
                   <label htmlFor="forgotEmail" className="block text-sm font-medium text-gray-300 mb-1">Email Cadastrado</label>
                   <input
@@ -338,8 +379,8 @@ const Login: React.FC<LoginProps> = ({ onLogin, shopLogoUrl }) => {
                   </button>
                   <button 
                     type="submit" 
-                    disabled={isLoading}
-                    className="bg-cyan-600 text-white px-4 py-2 rounded-lg hover:bg-cyan-700 flex items-center disabled:bg-cyan-800"
+                    disabled={isLoading || !isFirebaseActive}
+                    className="bg-cyan-600 text-white px-4 py-2 rounded-lg hover:bg-cyan-700 flex items-center disabled:bg-cyan-800 disabled:cursor-not-allowed"
                   >
                       {isLoading && <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>}
                       Enviar Link

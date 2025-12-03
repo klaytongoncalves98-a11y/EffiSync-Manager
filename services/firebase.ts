@@ -45,6 +45,11 @@ try {
         app = initializeApp(firebaseConfig);
         auth = getAuth(app);
         googleProvider = new GoogleAuthProvider();
+        // FORCE ACCOUNT SELECTION: This prevents auto-login if a session exists,
+        // ensuring the user explicitly chooses an account every time.
+        googleProvider.setCustomParameters({
+            prompt: 'select_account'
+        });
     } else {
         console.warn("Firebase Config missing or incomplete. Google Login will not work properly.");
     }
