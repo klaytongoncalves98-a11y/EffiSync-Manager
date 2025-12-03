@@ -1,6 +1,7 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Appointment, Service, AppointmentStatus, Client, Professional, Settings, Kpis } from '../types';
-import { CalendarIcon, PlusIcon, CheckIcon, CancelIcon, FileTextIcon, EditIcon, CloseIcon, UserIcon, LightbulbIcon } from './icons';
+import { CalendarIcon, PlusIcon, CheckIcon, CancelIcon, FileTextIcon, EditIcon, CloseIcon, UserIcon, LightbulbIcon, ChevronLeftIcon, ChevronRightIcon } from './icons';
 import Modal from './Modal';
 import Tooltip from './Tooltip';
 import { getAIAnalytics } from '../services/geminiService';
@@ -73,6 +74,7 @@ const AppointmentForm: React.FC<{
     const [showComboSuggestion, setShowComboSuggestion] = useState(false);
     const comboService = useMemo(() => services.find(s => s.name === 'Corte + Barba'), [services]);
 
+    // Handle Click Outside to close suggestions
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
@@ -82,6 +84,31 @@ const AppointmentForm: React.FC<{
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
+
+    // Debounce Logic for Client Search
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            // Optimization: If the query matches the currently selected client, don't reopen suggestions
+            // This prevents the list from popping up immediately after selection
+            if (selectedClient && searchQuery === selectedClient.name) {
+                return;
+            }
+
+            if (searchQuery) {
+                const filtered = clients.filter(client =>
+                    client.name.toLowerCase().includes(searchQuery.toLowerCase())
+                );
+                setFilteredClients(filtered);
+                // Only show suggestions if we are actually searching/filtering
+                setShowSuggestions(true);
+            } else {
+                setFilteredClients([]);
+                setShowSuggestions(false);
+            }
+        }, 300); // 300ms debounce delay
+
+        return () => clearTimeout(timer);
+    }, [searchQuery, clients, selectedClient]);
 
     useEffect(() => {
         const hasHaircut = selectedServices.some(s => s.name === 'Corte de Cabelo');
@@ -178,18 +205,7 @@ const AppointmentForm: React.FC<{
         const query = e.target.value;
         setSearchQuery(query);
         setSelectedClient(null); // Invalidate selection if user types again
-
-        if (query) {
-            setFilteredClients(
-                clients.filter(client =>
-                    client.name.toLowerCase().includes(query.toLowerCase())
-                )
-            );
-            setShowSuggestions(true);
-        } else {
-            setFilteredClients([]);
-            setShowSuggestions(false);
-        }
+        // Filtering is now handled by the useEffect debounce logic
     };
 
     const handleSelectClient = (client: Client) => {
@@ -425,15 +441,58 @@ const AppointmentForm: React.FC<{
 };
 
 const FormattedAIResponse: React.FC<{ text: string }> = ({ text }) => {
-    const parts = text.split(/(\*\*.*?\*\*)/g).filter(part => part);
+    // Process text to find bold headers and list items for better formatting
+    const lines = text.split('\n');
+    
     return (
-        <pre className="text-gray-300 whitespace-pre-wrap font-sans">
-            {parts.map((part, index) =>
-                part.startsWith('**') && part.endsWith('**')
-                    ? <strong key={index} className="text-amber-300">{part.slice(2, -2)}</strong>
-                    : part
-            )}
-        </pre>
+        <div className="bg-gray-800 rounded-lg p-6 font-sans text-gray-300 leading-relaxed shadow-inner">
+            <div className="flex items-center justify-center mb-6">
+                 <div className="bg-amber-600/20 p-3 rounded-full">
+                     <LightbulbIcon className="w-8 h-8 text-amber-500" />
+                 </div>
+            </div>
+            <div className="space-y-4">
+                {lines.map((line, index) => {
+                    const trimmed = line.trim();
+                    if (!trimmed) return <br key={index} />;
+                    
+                    if (trimmed.startsWith('**') && trimmed.endsWith('**')) {
+                         return <h3 key={index} className="text-lg font-bold text-amber-400 mt-4 border-b border-gray-700 pb-2">{trimmed.slice(2, -2)}</h3>;
+                    }
+                    if (trimmed.startsWith('- ')) {
+                        // Highlight suggestions inside list items if formatted with bold
+                        const content = trimmed.slice(2);
+                        const parts = content.split(/(\*\*.*?\*\*)/g);
+                        return (
+                            <div key={index} className="flex items-start">
+                                <span className="text-amber-500 mr-2 mt-1.5">•</span>
+                                <p>
+                                    {parts.map((part, i) => 
+                                        part.startsWith('**') && part.endsWith('**') 
+                                            ? <strong key={i} className="text-white font-semibold">{part.slice(2, -2)}</strong> 
+                                            : part
+                                    )}
+                                </p>
+                            </div>
+                        )
+                    }
+                    // Handle inline bolding for regular paragraphs
+                     const parts = trimmed.split(/(\*\*.*?\*\*)/g);
+                     return (
+                        <p key={index}>
+                             {parts.map((part, i) => 
+                                part.startsWith('**') && part.endsWith('**') 
+                                    ? <strong key={i} className="text-white font-semibold">{part.slice(2, -2)}</strong> 
+                                    : part
+                            )}
+                        </p>
+                     );
+                })}
+            </div>
+            <div className="mt-6 pt-4 border-t border-gray-700 text-center text-xs text-gray-500">
+                Análise gerada por Inteligência Artificial. Verifique as sugestões antes de aplicar.
+            </div>
+        </div>
     );
 };
 
@@ -441,6 +500,7 @@ const Schedule: React.FC<ScheduleProps> = ({ appointments, services, clients, pr
     const [isModalOpen, setModalOpen] = useState(false);
     const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+    const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'COMPLETED' | 'CANCELED'>('ALL');
     const [isCancelModalOpen, setCancelModalOpen] = useState(false);
     const [appointmentToCancel, setAppointmentToCancel] = useState<Appointment | null>(null);
     const [cancelReason, setCancelReason] = useState('');
@@ -449,17 +509,59 @@ const Schedule: React.FC<ScheduleProps> = ({ appointments, services, clients, pr
     const [analysisResult, setAnalysisResult] = useState('');
     const [isAnalyzing, setIsAnalyzing] = useState(false);
 
+    // Navigation Helpers
+    const changeDate = (days: number) => {
+        const date = new Date(selectedDate + 'T00:00:00'); // append time to avoid timezone offset shifts on just date string
+        date.setDate(date.getDate() + days);
+        setSelectedDate(date.toISOString().split('T')[0]);
+    };
+
+    const getStatusTooltip = (status: AppointmentStatus) => {
+        switch (status) {
+            case AppointmentStatus.PENDING:
+                return "Agendamento confirmado. Aguardando realização do serviço.";
+            case AppointmentStatus.COMPLETED:
+                return "Serviço concluído. Valor contabilizado no faturamento.";
+            case AppointmentStatus.CANCELED:
+                return "Agendamento cancelado. Não contabilizado.";
+            default:
+                return "";
+        }
+    };
+
     const filteredAppointments = useMemo(() =>
         appointments
             .filter(app => {
                 const appointmentDate = app.date.split('T')[0];
                 const dateMatch = appointmentDate === selectedDate;
-                const statusMatch = app.status === AppointmentStatus.PENDING;
+                
+                let statusMatch = true;
+                if (statusFilter !== 'ALL') {
+                    statusMatch = app.status === statusFilter;
+                }
+                
                 const professionalMatch = professionalFilter ? app.professionalId === professionalFilter : true;
                 return dateMatch && statusMatch && professionalMatch;
             })
             .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
-    [appointments, selectedDate, professionalFilter]);
+    [appointments, selectedDate, professionalFilter, statusFilter]);
+
+    // Daily Stats Calculation
+    const dailyStats = useMemo(() => {
+        const todaysApps = appointments.filter(app => app.date.split('T')[0] === selectedDate);
+        const total = todaysApps.length;
+        const pending = todaysApps.filter(a => a.status === AppointmentStatus.PENDING);
+        const completed = todaysApps.filter(a => a.status === AppointmentStatus.COMPLETED);
+        
+        const projectedRevenue = pending.reduce((sum, app) => {
+            const serviceTotal = app.services.reduce((s, serv) => s + serv.price, 0);
+            return sum + serviceTotal;
+        }, 0);
+
+        const realizedRevenue = completed.reduce((sum, app) => sum + (app.finalPrice || 0), 0);
+
+        return { total, pendingCount: pending.length, completedCount: completed.length, projectedRevenue, realizedRevenue };
+    }, [appointments, selectedDate]);
     
     const handleOpenEditModal = (appointment: Appointment) => {
         setEditingAppointment(appointment);
@@ -575,7 +677,8 @@ const Schedule: React.FC<ScheduleProps> = ({ appointments, services, clients, pr
     , [professionalFilter, professionals]);
 
     return (
-        <div className="space-y-8 animate-fade-in">
+        <div className="space-y-6 animate-fade-in">
+            {/* Header / Actions */}
             <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
                 <h2 className="text-2xl md:text-3xl font-bold text-white">Agenda</h2>
                 <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
@@ -590,140 +693,182 @@ const Schedule: React.FC<ScheduleProps> = ({ appointments, services, clients, pr
                 </div>
             </div>
             
-            <div className="space-y-4">
-                <div className="flex flex-col md:flex-row md:items-center gap-4 bg-gray-800/50 p-4 rounded-lg border border-gray-700">
-                     <div className="flex flex-1 items-center space-x-2">
-                        <label htmlFor="schedule-date" className="font-medium text-gray-300">Dia:</label>
+            {/* Control Panel: Date & Filters */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                {/* Date Picker Section */}
+                <div className="lg:col-span-5 bg-gray-800 p-4 rounded-lg flex items-center justify-between border border-gray-700">
+                    <button onClick={() => changeDate(-1)} className="p-2 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white transition-colors">
+                        <ChevronLeftIcon className="w-6 h-6" />
+                    </button>
+                    <div className="flex flex-col items-center">
+                        <span className="text-xs text-gray-400 font-medium uppercase mb-1">Visualizando</span>
                         <input
                             type="date"
-                            id="schedule-date"
                             value={selectedDate}
                             onChange={(e) => setSelectedDate(e.target.value)}
-                            className="w-full bg-gray-700 text-white p-2 rounded-md border border-gray-600 focus:ring-amber-500 focus:border-amber-500"
+                            className="bg-transparent text-white font-bold text-lg text-center focus:outline-none cursor-pointer"
                         />
                     </div>
-                    <div className="flex flex-1 items-center space-x-2">
-                        <label htmlFor="professional-filter" className="font-medium text-gray-300">Profissional:</label>
+                    <button onClick={() => changeDate(1)} className="p-2 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white transition-colors">
+                        <ChevronRightIcon className="w-6 h-6" />
+                    </button>
+                </div>
+
+                {/* Filters Section */}
+                <div className="lg:col-span-7 bg-gray-800 p-4 rounded-lg flex flex-col md:flex-row gap-4 border border-gray-700">
+                     <div className="flex-1">
                         <select
-                            id="professional-filter"
                             value={professionalFilter || ''}
                             onChange={(e) => setProfessionalFilter(e.target.value || null)}
                             className="w-full bg-gray-700 text-white p-2 rounded-md border border-gray-600 focus:ring-amber-500 focus:border-amber-500"
                         >
-                            <option value="">Todos</option>
+                            <option value="">Todos os Profissionais</option>
                             {professionals.map(p => (
                                 <option key={p.id} value={p.id}>{p.name}</option>
                             ))}
                         </select>
                     </div>
-                </div>
-                 {professionalFilter && professionalName && (
-                    <div className="bg-blue-900/50 text-blue-200 p-3 rounded-lg flex justify-between items-center animate-fade-in-down border border-blue-700">
-                        <span className="text-sm">Visualizando agenda de: <strong>{professionalName}</strong></span>
-                        <button onClick={() => setProfessionalFilter(null)} className="flex items-center text-xs bg-blue-600 px-3 py-1 rounded-md hover:bg-blue-700 text-white transition-colors">
-                            <CloseIcon className="w-4 h-4 mr-1" />
-                            Limpar
-                        </button>
+                    <div className="flex bg-gray-700 rounded-md p-1">
+                        {['ALL', 'PENDING', 'COMPLETED', 'CANCELED'].map((status) => (
+                            <button
+                                key={status}
+                                onClick={() => setStatusFilter(status as any)}
+                                className={`flex-1 px-3 py-1 rounded text-xs font-medium transition-all ${
+                                    statusFilter === status 
+                                    ? 'bg-amber-600 text-white shadow' 
+                                    : 'text-gray-400 hover:text-white'
+                                }`}
+                            >
+                                {status === 'ALL' ? 'Todos' : status === 'PENDING' ? 'Pendentes' : status === 'COMPLETED' ? 'Feitos' : 'Cancelados'}
+                            </button>
+                        ))}
                     </div>
-                )}
+                </div>
             </div>
 
-            <div className="bg-gray-800 rounded-lg shadow-lg">
-                {/* Desktop Header */}
-                <div className="hidden md:grid grid-cols-5 gap-4 p-4 border-b border-gray-700 text-sm font-semibold text-gray-400">
-                    <div>Cliente</div>
-                    <div>Hora</div>
-                    <div>Serviços</div>
-                    <div>Profissional</div>
-                    <div className="text-center">Ações</div>
+            {/* Daily Summary Stats */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-gray-800 p-3 rounded-lg border border-gray-700 text-center">
+                    <p className="text-gray-400 text-xs uppercase">Agendamentos</p>
+                    <p className="text-xl font-bold text-white">{dailyStats.total}</p>
                 </div>
-                {/* Mobile/Desktop List */}
-                <div className="md:divide-y md:divide-gray-700/50">
-                    {filteredAppointments.length > 0 ? (
-                        filteredAppointments.map(app => {
-                            const client = clients.find(c => c.name === app.clientName);
-                            const professional = professionals.find(p => p.id === app.professionalId);
-                            const totalDuration = app.services.reduce((sum, s) => sum + (s.duration || 0), 0);
-                            return (
-                                <div key={app.id} className="p-4 border-b border-gray-700/50 md:grid md:grid-cols-5 md:gap-4 md:items-center md:p-4 md:border-none hover:bg-gray-700/40">
-                                    {/* Item 1: Cliente */}
-                                    <div className="flex justify-between items-start md:block">
-                                        <div className="md:hidden text-xs font-bold uppercase text-gray-400">Cliente</div>
-                                        <div>
-                                            <p className="font-medium text-white flex items-center">
-                                                {app.clientName}
-                                                {app.notes && (
-                                                    <span title={app.notes} className="ml-2 text-gray-400 hover:text-amber-400 cursor-help">
-                                                        <FileTextIcon className="w-4 h-4" />
-                                                    </span>
-                                                )}
-                                            </p>
-                                            {client && <p className="text-sm text-gray-400">{formatPhoneNumber(client.phone)}</p>}
-                                        </div>
-                                    </div>
+                 <div className="bg-gray-800 p-3 rounded-lg border border-gray-700 text-center">
+                    <p className="text-gray-400 text-xs uppercase">Pendentes</p>
+                    <p className="text-xl font-bold text-amber-500">{dailyStats.pendingCount}</p>
+                </div>
+                <div className="bg-gray-800 p-3 rounded-lg border border-gray-700 text-center">
+                    <p className="text-gray-400 text-xs uppercase">Previsto (Dia)</p>
+                    <p className="text-xl font-bold text-gray-300">{dailyStats.projectedRevenue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+                </div>
+                 <div className="bg-gray-800 p-3 rounded-lg border border-gray-700 text-center">
+                    <p className="text-gray-400 text-xs uppercase">Realizado (Dia)</p>
+                    <p className="text-xl font-bold text-green-500">{dailyStats.realizedRevenue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+                </div>
+            </div>
 
-                                    {/* Item 2: Hora */}
-                                    <div className="mt-2 md:mt-0 flex justify-between items-center md:block">
-                                        <div className="md:hidden text-xs font-bold uppercase text-gray-400">Hora</div>
-                                        <div className="flex items-center text-gray-300 text-sm">
-                                            <CalendarIcon className="w-4 h-4 mr-2" />
-                                            <span>{new Date(app.date).toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
-                                        </div>
+            {/* Appointment List */}
+            <div className="space-y-3">
+                {filteredAppointments.length > 0 ? (
+                    filteredAppointments.map(app => {
+                        const client = clients.find(c => c.name === app.clientName);
+                        const professional = professionals.find(p => p.id === app.professionalId);
+                        const totalDuration = app.services.reduce((sum, s) => sum + (s.duration || 0), 0);
+                        
+                        const appDate = new Date(app.date);
+                        const today = new Date();
+                        appDate.setHours(0, 0, 0, 0);
+                        today.setHours(0, 0, 0, 0);
+                        
+                        const isFutureDate = appDate.getTime() > today.getTime();
+
+                        // Border color based on status
+                        let borderColor = 'border-l-4 border-gray-600';
+                        if (app.status === AppointmentStatus.PENDING) borderColor = 'border-l-4 border-amber-500';
+                        if (app.status === AppointmentStatus.COMPLETED) borderColor = 'border-l-4 border-green-500';
+                        if (app.status === AppointmentStatus.CANCELED) borderColor = 'border-l-4 border-red-500';
+
+                        return (
+                            <div key={app.id} className={`bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-700/50 ${borderColor} hover:bg-gray-750 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-4`}>
+                                {/* Time & Client Info */}
+                                <div className="flex items-center gap-4 flex-grow">
+                                    <div className="flex flex-col items-center justify-center bg-gray-700 rounded p-2 min-w-[70px]">
+                                         <span className="text-lg font-bold text-white leading-none">
+                                            {new Date(app.date).toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                         </span>
+                                         <span className="text-xs text-gray-400 mt-1">{totalDuration} min</span>
                                     </div>
-                                    
-                                    {/* Item 3: Serviços */}
-                                    <div className="mt-2 md:mt-0">
-                                        <div className="md:hidden text-xs font-bold uppercase text-gray-400 mb-1">Serviços</div>
-                                        <div className="text-sm text-gray-400">
-                                            {app.services.map(s => s.name).join(', ')}
-                                            {totalDuration > 0 && <p className="text-xs text-gray-500 mt-1">Duração: {totalDuration} min</p>}
-                                        </div>
-                                    </div>
-                                    
-                                    {/* Item 4: Profissional */}
-                                    <div className="mt-2 md:mt-0 flex justify-between items-center md:block">
-                                        <div className="md:hidden text-xs font-bold uppercase text-gray-400">Profissional</div>
-                                        <div className="text-sm text-gray-300 text-right md:text-left flex items-center justify-end md:justify-start">
-                                            {professional?.imageUrl ? (
-                                                <img src={professional.imageUrl} alt={professional.name} className="w-6 h-6 rounded-full mr-2 object-cover"/>
-                                            ) : (
-                                                <div className="w-6 h-6 rounded-full mr-2 bg-gray-700 flex items-center justify-center">
-                                                    <UserIcon className="w-4 h-4 text-gray-400" />
-                                                </div>
+                                    <div>
+                                        <div className="flex items-center">
+                                            <p className="font-bold text-lg text-white mr-2">{app.clientName}</p>
+                                            {app.notes && (
+                                                <Tooltip text={app.notes}>
+                                                    <FileTextIcon className="w-4 h-4 text-amber-500 cursor-help" />
+                                                </Tooltip>
                                             )}
-                                            <span>{professional?.name || 'N/A'}</span>
                                         </div>
-                                    </div>
-                                    
-                                    {/* Item 5: Ações */}
-                                    <div className="mt-4 md:mt-0">
-                                        <div className="flex justify-end md:justify-center space-x-2">
-                                            <Tooltip text="Editar Agendamento">
-                                                <button onClick={() => handleOpenEditModal(app)} className="flex items-center text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded-md hover:bg-blue-500/40 transition-colors">
-                                                    <EditIcon className="w-4 h-4 md:mr-1" /> <span className="hidden md:inline">Editar</span>
-                                                </button>
-                                            </Tooltip>
-                                            <Tooltip text="Marcar como Concluído">
-                                                <button onClick={() => handleStatusChange(app, AppointmentStatus.COMPLETED)} className="flex items-center text-xs bg-green-500/20 text-green-300 px-2 py-1 rounded-md hover:bg-green-500/40 transition-colors">
-                                                    <CheckIcon className="w-4 h-4" />
-                                                </button>
-                                            </Tooltip>
-                                            <Tooltip text="Cancelar Agendamento">
-                                                <button onClick={() => handleCancelClick(app)} className="flex items-center text-xs bg-red-500/20 text-red-300 px-2 py-1 rounded-md hover:bg-red-500/40 transition-colors">
-                                                    <CancelIcon className="w-4 h-4" />
-                                                </button>
-                                            </Tooltip>
+                                        <p className="text-sm text-gray-400">{app.services.map(s => s.name).join(', ')}</p>
+                                        <div className="flex items-center mt-1 text-xs text-gray-500 gap-3">
+                                            {client && <span>{formatPhoneNumber(client.phone)}</span>}
+                                            <span className="flex items-center gap-1">
+                                                <UserIcon className="w-3 h-3" /> {professional?.name || 'Profissional'}
+                                            </span>
                                         </div>
                                     </div>
                                 </div>
-                            )
-                        })
-                    ) : (
-                        <div className="p-8 text-center text-gray-400">
-                            Nenhum agendamento pendente para esta data.
-                        </div>
-                    )}
-                </div>
+
+                                {/* Status & Actions */}
+                                <div className="flex items-center justify-between md:justify-end gap-4 border-t md:border-t-0 border-gray-700 pt-3 md:pt-0">
+                                    <div>
+                                        <Tooltip text={getStatusTooltip(app.status)}>
+                                            <span className={`text-xs font-bold px-2 py-1 rounded cursor-help select-none
+                                                ${app.status === AppointmentStatus.COMPLETED ? 'bg-green-500/20 text-green-400' : 
+                                                  app.status === AppointmentStatus.CANCELED ? 'bg-red-500/20 text-red-400' : 
+                                                  'bg-amber-500/20 text-amber-400'}`}>
+                                                {app.status === AppointmentStatus.COMPLETED ? 'Concluído' : app.status === AppointmentStatus.CANCELED ? 'Cancelado' : 'Pendente'}
+                                            </span>
+                                        </Tooltip>
+                                    </div>
+                                    
+                                    <div className="flex gap-2">
+                                        <Tooltip text="Editar">
+                                            <button onClick={() => handleOpenEditModal(app)} className="p-2 rounded-lg bg-gray-700 text-blue-400 hover:bg-blue-600 hover:text-white transition-colors">
+                                                <EditIcon className="w-4 h-4" />
+                                            </button>
+                                        </Tooltip>
+
+                                        {app.status === AppointmentStatus.PENDING && (
+                                            <>
+                                                <Tooltip text={isFutureDate ? "Disponível apenas na data agendada" : "Concluir"}>
+                                                    <button 
+                                                        onClick={() => !isFutureDate && handleStatusChange(app, AppointmentStatus.COMPLETED)} 
+                                                        className={`p-2 rounded-lg transition-colors ${isFutureDate ? 'bg-gray-700 text-gray-500 cursor-not-allowed opacity-50' : 'bg-gray-700 text-green-400 hover:bg-green-600 hover:text-white'}`}
+                                                        disabled={isFutureDate}
+                                                    >
+                                                        <CheckIcon className="w-4 h-4" />
+                                                    </button>
+                                                </Tooltip>
+                                                <Tooltip text="Cancelar">
+                                                    <button onClick={() => handleCancelClick(app)} className="p-2 rounded-lg bg-gray-700 text-red-400 hover:bg-red-600 hover:text-white transition-colors">
+                                                        <CancelIcon className="w-4 h-4" />
+                                                    </button>
+                                                </Tooltip>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )
+                    })
+                ) : (
+                    <div className="bg-gray-800 rounded-lg p-12 text-center border border-gray-700 border-dashed">
+                        <CalendarIcon className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+                        <h3 className="text-gray-300 font-medium text-lg">Agenda Livre</h3>
+                        <p className="text-gray-500 mt-1">Nenhum agendamento encontrado para este filtro.</p>
+                        <button onClick={handleOpenAddModal} className="mt-4 text-amber-500 hover:text-amber-400 font-medium text-sm">
+                            + Adicionar novo agendamento
+                        </button>
+                    </div>
+                )}
             </div>
 
             <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={editingAppointment ? "Editar Agendamento" : "Novo Agendamento"}>
@@ -776,9 +921,14 @@ const Schedule: React.FC<ScheduleProps> = ({ appointments, services, clients, pr
             </Modal>
 
             <Modal isOpen={isAnalysisModalOpen} onClose={() => setAnalysisModalOpen(false)} title="Análise da Agenda">
-                <div className="min-h-[200px]">
-                    {isAnalyzing && <div className="text-gray-400 animate-pulse text-center pt-16">Analisando dados, por favor aguarde...</div>}
-                    {analysisResult && <FormattedAIResponse text={analysisResult} />}
+                <div className="min-h-[200px] max-h-[70vh] overflow-y-auto">
+                    {isAnalyzing && (
+                        <div className="flex flex-col items-center justify-center py-12 space-y-4 animate-pulse">
+                            <LightbulbIcon className="w-12 h-12 text-amber-500" />
+                            <p className="text-gray-400 text-lg">Nossa IA está analisando seus dados...</p>
+                        </div>
+                    )}
+                    {!isAnalyzing && analysisResult && <FormattedAIResponse text={analysisResult} />}
                 </div>
             </Modal>
         </div>

@@ -8,8 +8,6 @@ export async function getAIAnalytics(
     services: Service[],
     appointments: Appointment[]
 ): Promise<string> {
-    // FIX: Removed unnecessary API key check as per guidelines.
-    // The API key is assumed to be available in the execution context.
     try {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
@@ -62,7 +60,8 @@ When providing analysis, offer actionable advice. Here are some examples of valu
         });
         
         // Per @google/genai guidelines, access the text response directly via the .text property.
-        return response.text;
+        // Return text or a fallback message if undefined.
+        return response.text || "Não foi possível gerar uma análise no momento.";
     } catch (error) {
         console.error("Error calling Gemini API:", error);
         return "An error occurred while analyzing the data. Please check the console for more details.";

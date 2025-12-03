@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 const Icon: React.FC<{ children: React.ReactNode, className?: string }> = ({ children, className }) => (
@@ -89,6 +90,9 @@ export const LightbulbIcon: React.FC<{ className?: string }> = ({ className }) =
 );
 export const DevicePhoneMobileIcon: React.FC<{ className?: string }> = ({ className }) => (
   <Icon className={className}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></Icon>
+);
+export const ShoppingBagIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <Icon className={className}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" /></Icon>
 );
 export const GoogleIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg className={className || "w-5 h-5"} viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">

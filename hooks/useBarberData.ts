@@ -1,5 +1,5 @@
 
-import { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
     Appointment,
     AppointmentStatus,
@@ -12,7 +12,8 @@ import {
     TopServiceData,
     ClientProfile,
     RevenueByServiceData,
-    Settings
+    Settings,
+    Product
 } from '../types';
 import { RecurrenceSettings } from '../components/Schedule';
 
@@ -24,6 +25,13 @@ const SERVICES_CATALOG: Service[] = [
     { id: '2', name: 'Barba', price: 25, duration: 20, notes: 'Desenho da barba com toalha quente e navalha.' },
     { id: '3', name: 'Sobrancelha', price: 15, duration: 15, notes: 'Design de sobrancelha na pinça ou cera.' },
     { id: '4', name: 'Corte + Barba', price: 60, duration: 50 },
+];
+
+const PRODUCTS_CATALOG: Product[] = [
+    { id: '1', name: 'Pomada Modeladora', price: 35, quantity: 15 },
+    { id: '2', name: 'Óleo para Barba', price: 25, quantity: 10 },
+    { id: '3', name: 'Shampoo 2 em 1', price: 30, quantity: 8 },
+    { id: '4', name: 'Gel Fixador', price: 20, quantity: 20 },
 ];
 
 const CLIENTS_CATALOG: Client[] = [
@@ -40,15 +48,28 @@ const PROFESSIONALS_CATALOG: Professional[] = [
     { id: '3', name: 'Ana Souza', specialty: 'Esteticista', imageUrl: 'https://i.pravatar.cc/150?u=ana' },
 ];
 
+// Clean, robust SVG Data URI for EffiSync Logo - "S" Shape (Sync)
+// Dark background rounded square with Green->Cyan Gradient Arrows forming an S
+const EFFISYNC_LOGO_SVG = "data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='g1' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%234ade80'/%3E%3Cstop offset='100%25' stop-color='%2316a34a'/%3E%3C/linearGradient%3E%3ClinearGradient id='g2' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%2322d3ee'/%3E%3Cstop offset='100%25' stop-color='%230891b2'/%3E%3C/linearGradient%3E%3Cfilter id='d' x='0' y='0' width='512' height='512'%3E%3CfeDropShadow dx='0' dy='4' stdDeviation='8' flood-opacity='0.3'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='512' height='512' rx='100' fill='%231f2937'/%3E%3Cpath d='M150 256c0-88.4 71.6-160 160-160h40v-40l110 75-110 75v-40h-40c-55.2 0-100 44.8-100 100h-60z' fill='url(%23g1)' filter='url(%23d)'/%3E%3Cpath d='M362 256c0 88.4-71.6 160-160 160h-40v40l-110-75 110-75v40h40c55.2 0 100-44.8 100-100h60z' fill='url(%23g2)' filter='url(%23d)'/%3E%3C/svg%3E";
+
 const INITIAL_SETTINGS: Settings = {
     monthlyGoal: 8000,
     businessHours: { start: '09:00', end: '18:00' },
     shopName: 'EffiSync Manager',
     shopAddress: '123 Rua Principal, Cidade, Estado',
-    shopLogoUrl: undefined, 
+    shopLogoUrl: EFFISYNC_LOGO_SVG,
     workingDays: [1, 2, 3, 4, 5, 6], // Monday to Saturday
     specialDays: [],
     dataRetention: { period: 0, autoBackup: false },
+    theme: {
+        backgroundColor: '#111827', // gray-900
+        cardColor: '#1f2937', // gray-800
+        sidebarColor: '#1f2937', // gray-800
+        textColor: '#e5e7eb', // gray-200
+        secondaryTextColor: '#9ca3af', // gray-400
+        accentColor: '#06b6d4', // cyan-500 (EffiSync Brand Color)
+        inputColor: '#374151', // gray-700
+    }
 };
 
 const generateMonthlyData = () => {
@@ -103,18 +124,123 @@ const generateMonthlyData = () => {
     return { appointments, expenses };
 };
 
-const { appointments: initialAppointments, expenses: initialExpenses } = generateMonthlyData();
+// Helper to load from local storage
+const loadFromStorage = <T>(key: string, initialValue: T): T => {
+    try {
+        const item = window.localStorage.getItem(key);
+        return item ? JSON.parse(item) : initialValue;
+    } catch (error) {
+        console.error(`Error loading ${key} from localStorage`, error);
+        return initialValue;
+    }
+};
 
+// Custom Hook to manage persistent state
+function usePersistentState<T>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
+    const [state, setState] = useState<T>(() => loadFromStorage(key, initialValue));
+
+    useEffect(() => {
+        try {
+            window.localStorage.setItem(key, JSON.stringify(state));
+        } catch (error) {
+            console.error(`Error saving ${key} to localStorage`, error);
+        }
+    }, [key, state]);
+
+    return [state, setState];
+}
 
 export const useBarberData = () => {
-    const [services, setServices] = useState<Service[]>(SERVICES_CATALOG);
-    const [appointments, setAppointments] = useState<Appointment[]>(initialAppointments);
-    const [expenses, setExpenses] = useState<Expense[]>(initialExpenses);
-    const [clients, setClients] = useState<Client[]>(CLIENTS_CATALOG);
-    const [professionals, setProfessionals] = useState<Professional[]>(PROFESSIONALS_CATALOG);
-    const [settings, setSettings] = useState<Settings>(INITIAL_SETTINGS);
+    // Determine initial data: try localStorage first, otherwise generate mock data
+    const initialData = useMemo(() => {
+        const hasData = window.localStorage.getItem('effisync_appointments');
+        if (hasData) {
+            return { appointments: [], expenses: [] }; // Will be loaded by usePersistentState
+        }
+        return generateMonthlyData();
+    }, []);
+
+    // Use Persistent State Hook for Catalogs and Data
+    const [services, setServices] = usePersistentState<Service[]>('effisync_services', SERVICES_CATALOG);
+    const [products, setProducts] = usePersistentState<Product[]>('effisync_products', PRODUCTS_CATALOG);
+    const [appointments, setAppointments] = usePersistentState<Appointment[]>('effisync_appointments', initialData.appointments.length ? initialData.appointments : []);
+    const [expenses, setExpenses] = usePersistentState<Expense[]>('effisync_expenses', initialData.expenses.length ? initialData.expenses : []);
+    const [clients, setClients] = usePersistentState<Client[]>('effisync_clients', CLIENTS_CATALOG);
+    const [professionals, setProfessionals] = usePersistentState<Professional[]>('effisync_professionals', PROFESSIONALS_CATALOG);
+    
+    // Settings has custom initialization logic for auto-repair, so we keep manual useState but use effect for persistence
+    const [settings, setSettings] = useState<Settings>(() => {
+        const loaded = loadFromStorage('effisync_settings', INITIAL_SETTINGS);
+        
+        // AUTO-REPAIR LOGIC for LOGO:
+        const isDefaultName = loaded.shopName === 'EffiSync Manager';
+        const isMissingLogo = !loaded.shopLogoUrl;
+        const isOldBase64 = loaded.shopLogoUrl && loaded.shopLogoUrl.includes('base64');
+        const isDifferentVersion = isDefaultName && loaded.shopLogoUrl !== EFFISYNC_LOGO_SVG;
+
+        const shouldForceUpdate = isDefaultName || isMissingLogo || isOldBase64 || isDifferentVersion;
+
+        if (shouldForceUpdate) {
+            return {
+                ...loaded,
+                shopLogoUrl: EFFISYNC_LOGO_SVG,
+                theme: loaded.theme || INITIAL_SETTINGS.theme
+            };
+        }
+
+        if (!loaded.theme) {
+            return { ...loaded, theme: INITIAL_SETTINGS.theme };
+        }
+        if (!loaded.theme.sidebarColor) {
+             return { ...loaded, theme: { ...INITIAL_SETTINGS.theme, ...loaded.theme } };
+        }
+        return loaded;
+    });
+    
     const [selectedMonth, setSelectedMonth] = useState(new Date());
 
+    // Settings Persistence Effect
+    useEffect(() => {
+        localStorage.setItem('effisync_settings', JSON.stringify(settings));
+    }, [settings]);
+
+    // --- DATA RETENTION POLICY ENFORCEMENT ---
+    useEffect(() => {
+        const period = settings.dataRetention?.period;
+        if (period && period > 0) {
+            const cutoffDate = new Date();
+            cutoffDate.setMonth(cutoffDate.getMonth() - period);
+            
+            let hasChanges = false;
+
+            const filteredAppointments = appointments.filter(app => {
+                const appDate = new Date(app.date);
+                return appDate >= cutoffDate || app.status === AppointmentStatus.PENDING;
+            });
+
+            const filteredExpenses = expenses.filter(exp => {
+                const expDate = new Date(exp.date);
+                return expDate >= cutoffDate;
+            });
+
+            if (filteredAppointments.length !== appointments.length) {
+                setAppointments(filteredAppointments);
+                hasChanges = true;
+            }
+
+            if (filteredExpenses.length !== expenses.length) {
+                setExpenses(filteredExpenses);
+                hasChanges = true;
+            }
+
+            if (hasChanges) {
+                console.log(`[Data Retention] Cleaned data older than ${period} months.`);
+            }
+        }
+    }, [settings.dataRetention?.period, appointments.length, expenses.length]);
+
+
+    // --- Computed Values (KPIs, etc.) ---
     const isSameMonth = (d1: Date, d2: Date) => d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth();
 
     const filteredAppointments = useMemo(() => 
@@ -229,15 +355,65 @@ export const useBarberData = () => {
 
     const addService = useCallback((service: Omit<Service, 'id'>) => {
         setServices(prev => [...prev, { ...service, id: Date.now().toString() }]);
-    }, []);
+    }, [setServices]);
 
     const updateService = useCallback((updatedService: Service) => {
         setServices(prev => prev.map(s => s.id === updatedService.id ? updatedService : s));
-    }, []);
+    }, [setServices]);
 
     const deleteService = useCallback((serviceId: string) => {
         setServices(prev => prev.filter(s => s.id !== serviceId));
-    }, []);
+    }, [setServices]);
+
+    const addProduct = useCallback((product: Omit<Product, 'id'>) => {
+        setProducts(prev => [...prev, { ...product, id: Date.now().toString() }]);
+    }, [setProducts]);
+
+    const updateProduct = useCallback((updatedProduct: Product) => {
+        setProducts(prev => prev.map(p => p.id === updatedProduct.id ? updatedProduct : p));
+    }, [setProducts]);
+
+    const deleteProduct = useCallback((productId: string) => {
+        setProducts(prev => prev.filter(p => p.id !== productId));
+    }, [setProducts]);
+
+    const sellProduct = useCallback((productId: string, clientName: string, quantity: number) => {
+        const product = products.find(p => p.id === productId);
+        if (!product) return;
+
+        if (product.quantity < quantity) {
+            alert('Estoque insuficiente!');
+            return;
+        }
+
+        // 1. Decrease Stock
+        const updatedProduct = { ...product, quantity: product.quantity - quantity };
+        updateProduct(updatedProduct);
+
+        // 2. Create Transaction (Recorded as a Completed Appointment)
+        // This ensures the sale appears in Reports, Dashboard, and Client History automatically.
+        const totalValue = product.price * quantity;
+        const transactionService: Service = {
+            id: `prod-sale-${productId}`,
+            name: `${product.name} (Qtd: ${quantity})`,
+            price: totalValue,
+            duration: 0
+        };
+
+        const saleRecord: Appointment = {
+            id: `sale-${Date.now()}`,
+            clientName: clientName,
+            date: new Date().toISOString(),
+            status: AppointmentStatus.COMPLETED,
+            services: [transactionService],
+            finalPrice: totalValue,
+            professionalId: 'admin', // Or current user if available, using 'admin' as generic system sale
+            notes: 'Venda de Produto'
+        };
+
+        setAppointments(prev => [...prev, saleRecord]);
+
+    }, [products, updateProduct, setAppointments]);
     
     const isSlotAvailable = useCallback((
         targetDate: Date,
@@ -247,7 +423,6 @@ export const useBarberData = () => {
         currentSettings: Settings
     ): boolean => {
         // 1. Check if it's a working day
-        // Use UTC day to prevent timezone issues
         const dayOfWeek = targetDate.getUTCDay();
         if (!currentSettings.workingDays.includes(dayOfWeek)) {
             return false;
@@ -337,21 +512,21 @@ export const useBarberData = () => {
         setAppointments(prev => [...prev, ...newAppointments]);
         return { created, skipped };
 
-    }, [appointments, settings, isSlotAvailable]);
+    }, [appointments, settings, isSlotAvailable, setAppointments]);
 
 
     const updateAppointment = useCallback((updatedAppointment: Appointment) => {
         setAppointments(prev => prev.map(a => a.id === updatedAppointment.id ? updatedAppointment : a));
-    }, []);
+    }, [setAppointments]);
 
     const updateAppointmentStatus = useCallback((appointmentId: string, status: AppointmentStatus, finalPrice?: number) => {
         setAppointments(prev => prev.map(a => a.id === appointmentId ? { ...a, status, finalPrice: status === AppointmentStatus.COMPLETED ? finalPrice : undefined } : a));
-    }, []);
+    }, [setAppointments]);
     
     const addClient = useCallback((client: Omit<Client, 'id'>) => {
         const newId = clients.length > 0 ? Math.max(...clients.map(c => c.id)) + 1 : 1;
         setClients(prev => [...prev, { ...client, id: newId }]);
-    }, [clients]);
+    }, [clients, setClients]);
 
     const deleteClient = useCallback((clientId: number) => {
         const clientToDelete = clients.find(c => c.id === clientId);
@@ -362,35 +537,57 @@ export const useBarberData = () => {
         
         // Remove the client
         setClients(prev => prev.filter(c => c.id !== clientId));
-    }, [clients]);
+    }, [clients, setAppointments, setClients]);
 
     const addExpense = useCallback((expense: Omit<Expense, 'id'>) => {
         setExpenses(prev => [...prev, { ...expense, id: Date.now().toString() }]);
-    }, []);
+    }, [setExpenses]);
     
     const updateExpense = useCallback((updatedExpense: Expense) => {
         setExpenses(prev => prev.map(e => e.id === updatedExpense.id ? updatedExpense : e));
-    }, []);
+    }, [setExpenses]);
     
     const deleteExpense = useCallback((expenseId: string) => {
         setExpenses(prev => prev.filter(e => e.id !== expenseId));
-    }, []);
+    }, [setExpenses]);
 
     const addProfessional = useCallback((professional: Omit<Professional, 'id'>) => {
         setProfessionals(prev => [...prev, { ...professional, id: Date.now().toString() }]);
-    }, []);
+    }, [setProfessionals]);
 
     const updateProfessional = useCallback((updatedProfessional: Professional) => {
         setProfessionals(prev => prev.map(p => p.id === updatedProfessional.id ? updatedProfessional : p));
-    }, []);
+    }, [setProfessionals]);
 
     const deleteProfessional = useCallback((professionalId: string) => {
         setProfessionals(prev => prev.filter(p => p.id !== professionalId));
-    }, []);
+    }, [setProfessionals]);
+
+    const resetAllData = useCallback(() => {
+        // 1. Clear Local Storage keys related to the app
+        localStorage.removeItem('effisync_services');
+        localStorage.removeItem('effisync_products');
+        localStorage.removeItem('effisync_appointments');
+        localStorage.removeItem('effisync_expenses');
+        localStorage.removeItem('effisync_clients');
+        localStorage.removeItem('effisync_professionals');
+        localStorage.removeItem('effisync_settings');
+
+        // 2. Reset State to Initial/Empty Values (Factory Reset)
+        setAppointments([]);
+        setExpenses([]);
+        // For static catalogs, we reset to the default values so the app remains usable
+        setServices(SERVICES_CATALOG);
+        setProducts(PRODUCTS_CATALOG);
+        setClients(CLIENTS_CATALOG);
+        setProfessionals(PROFESSIONALS_CATALOG);
+        setSettings(INITIAL_SETTINGS);
+    }, [setAppointments, setExpenses, setServices, setProducts, setClients, setProfessionals, setSettings]);
 
     return {
         // Full Data
         services,
+        products,
         appointments,
         expenses,
         clients,
@@ -414,6 +611,10 @@ export const useBarberData = () => {
             addService,
             updateService,
             deleteService,
+            addProduct,
+            updateProduct,
+            deleteProduct,
+            sellProduct,
             addAppointment,
             updateAppointment,
             updateAppointmentStatus,
@@ -425,6 +626,7 @@ export const useBarberData = () => {
             addProfessional,
             updateProfessional,
             deleteProfessional,
+            resetAllData,
         }
     };
 };

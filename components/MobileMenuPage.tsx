@@ -1,7 +1,8 @@
+
 import React from 'react';
 import {
     DashboardIcon, ScheduleIcon, ServicesIcon, ReportsIcon, FinanceIcon,
-    UsersIcon, BriefcaseIcon, SettingsIcon, ScissorsIcon, LogoutIcon
+    UsersIcon, BriefcaseIcon, SettingsIcon, ScissorsIcon, LogoutIcon, ShoppingBagIcon
 } from './icons';
 
 interface MobileMenuPageProps {
@@ -41,9 +42,10 @@ const MobileMenuPage: React.FC<MobileMenuPageProps> = ({ setCurrentView, shopNam
             <nav className="space-y-3">
                 <MenuItem icon={<DashboardIcon />} label="Dashboard" onClick={() => setCurrentView('dashboard')} />
                 <MenuItem icon={<ScheduleIcon />} label="Agenda" onClick={() => setCurrentView('schedule')} />
-                <MenuItem icon={<ServicesIcon />} label="Serviços" onClick={() => setCurrentView('services')} />
-                <MenuItem icon={<BriefcaseIcon />} label="Profissionais" onClick={() => setCurrentView('professionals')} />
                 <MenuItem icon={<UsersIcon />} label="Clientes" onClick={() => setCurrentView('clients')} />
+                <MenuItem icon={<ServicesIcon />} label="Serviços" onClick={() => setCurrentView('services')} />
+                <MenuItem icon={<ShoppingBagIcon />} label="Produtos" onClick={() => setCurrentView('products')} />
+                <MenuItem icon={<BriefcaseIcon />} label="Profissionais" onClick={() => setCurrentView('professionals')} />
                 <MenuItem icon={<ReportsIcon />} label="Relatórios" onClick={() => setCurrentView('reports')} />
                 <MenuItem icon={<FinanceIcon />} label="Financeiro" onClick={() => setCurrentView('finance')} />
                 <MenuItem icon={<SettingsIcon />} label="Opções" onClick={() => setCurrentView('settings')} />

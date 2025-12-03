@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { DashboardIcon, ScheduleIcon, ServicesIcon, ReportsIcon, FinanceIcon, ScissorsIcon, UsersIcon, BriefcaseIcon, SettingsIcon, LogoutIcon } from './icons';
+import { DashboardIcon, ScheduleIcon, ServicesIcon, ReportsIcon, FinanceIcon, ScissorsIcon, UsersIcon, BriefcaseIcon, SettingsIcon, LogoutIcon, ShoppingBagIcon } from './icons';
 
 interface SidebarProps {
     currentView: string;
@@ -48,9 +48,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, shopName
             <nav className="flex-1 space-y-2">
                 <NavItem icon={<DashboardIcon />} label="Dashboard" view="dashboard" currentView={currentView} onClick={() => setCurrentView('dashboard')} />
                 <NavItem icon={<ScheduleIcon />} label="Agenda" view="schedule" currentView={currentView} onClick={() => setCurrentView('schedule')} />
-                <NavItem icon={<ServicesIcon />} label="Serviços" view="services" currentView={currentView} onClick={() => setCurrentView('services')} />
-                <NavItem icon={<BriefcaseIcon />} label="Profissionais" view="professionals" currentView={currentView} onClick={() => setCurrentView('professionals')} />
                 <NavItem icon={<UsersIcon />} label="Clientes" view="clients" currentView={currentView} onClick={() => setCurrentView('clients')} />
+                <NavItem icon={<ServicesIcon />} label="Serviços" view="services" currentView={currentView} onClick={() => setCurrentView('services')} />
+                <NavItem icon={<ShoppingBagIcon />} label="Produtos" view="products" currentView={currentView} onClick={() => setCurrentView('products')} />
+                <NavItem icon={<BriefcaseIcon />} label="Profissionais" view="professionals" currentView={currentView} onClick={() => setCurrentView('professionals')} />
                 <NavItem icon={<ReportsIcon />} label="Relatórios" view="reports" currentView={currentView} onClick={() => setCurrentView('reports')} />
                 <NavItem icon={<FinanceIcon />} label="Financeiro" view="finance" currentView={currentView} onClick={() => setCurrentView('finance')} />
             </nav>
@@ -67,7 +68,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, shopName
             </div>
 
             <div className="mt-auto text-center text-gray-500 text-xs">
-                <p>&copy; {new Date().getFullYear()} EffiSync Manager</p>
+                <p>&copy; {new Date().getFullYear()} EffiSync.com.br</p>
                 <p>Feito com ❤️</p>
             </div>
         </aside>

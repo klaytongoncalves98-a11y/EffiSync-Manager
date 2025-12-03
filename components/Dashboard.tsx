@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState, useEffect } from 'react';
 import { Kpis, Appointment, AppointmentStatus, TopServiceData, Settings } from '../types';
 import { CalendarIcon, ScissorsIcon, DevicePhoneMobileIcon, DownloadIcon } from './icons';
@@ -48,7 +49,7 @@ const GoalCard: React.FC<{ current: number; goal: number; selectedMonth: Date }>
                 </div>
                 <div className="w-full bg-gray-700 rounded-full h-3">
                     <div 
-                        className="bg-amber-500 h-3 rounded-full transition-all duration-500" 
+                        className="bg-amber-600 h-3 rounded-full transition-all duration-500" 
                         style={{ width: `${Math.min(progress, 100)}%` }}
                     ></div>
                 </div>
@@ -101,12 +102,11 @@ const AddToHomeScreenCard: React.FC = () => {
         return null;
     }
 
-    // Using slate colors for a blueish-gray tint, closer to the user's image reference
-    // while maintaining the app's dark theme. Buttons are styled to look like cards as per user's phrasing.
+    // Updated to use bg-gray-800 and bg-gray-700 to match the theme system (var(--card-bg) and var(--input-bg))
     return (
-        <div className="bg-slate-800 p-4 rounded-lg shadow-lg flex flex-wrap items-center justify-between w-full animate-fade-in-down gap-x-6 gap-y-4">
+        <div className="bg-gray-800 p-4 rounded-lg shadow-lg flex flex-wrap items-center justify-between w-full animate-fade-in-down gap-x-6 gap-y-4">
             <div className="flex items-center flex-grow min-w-[300px]">
-                <div className="flex-shrink-0 p-3 bg-slate-700 rounded-full mr-4">
+                <div className="flex-shrink-0 p-3 bg-gray-700 rounded-full mr-4">
                     <DevicePhoneMobileIcon className="w-6 h-6 text-amber-500" />
                 </div>
                 <div>
@@ -115,7 +115,7 @@ const AddToHomeScreenCard: React.FC = () => {
                 </div>
             </div>
             <div className="flex items-center space-x-4 flex-shrink-0">
-                <button onClick={handleDismissClick} className="text-gray-400 hover:text-white text-sm font-medium transition-colors px-4 py-2 rounded-lg hover:bg-slate-700">Agora não</button>
+                <button onClick={handleDismissClick} className="text-gray-400 hover:text-white text-sm font-medium transition-colors px-4 py-2 rounded-lg hover:bg-gray-700">Agora não</button>
                 <button onClick={handleInstallClick} className="flex items-center bg-amber-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-amber-700 transition-colors">
                     <DownloadIcon className="w-4 h-4 mr-2" />
                     <span>Instalar</span>
@@ -197,7 +197,7 @@ const Dashboard: React.FC<DashboardProps> = ({ kpis, appointments, topServices, 
                                         labelStyle={{ color: '#d1d5db' }}
                                         formatter={(value: number) => [value, "Vendas"]}
                                     />
-                                    <Bar dataKey="count" fill="#d97706" barSize={25} radius={[0, 4, 4, 0]} />
+                                    <Bar dataKey="count" fill={settings.theme?.accentColor || '#d97706'} barSize={25} radius={[0, 4, 4, 0]} />
                                 </BarChart>
                             </ResponsiveContainer>
                         </div>

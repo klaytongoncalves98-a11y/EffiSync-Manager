@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon } from './icons';
 
@@ -45,7 +46,7 @@ const MonthSelector: React.FC<MonthSelectorProps> = ({ selectedMonth, setSelecte
     <div ref={selectorRef} className="relative w-full md:w-auto">
       <button 
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center justify-between w-full bg-gray-800/50 p-3 rounded-lg border border-gray-700 hover:bg-gray-700/80 transition-colors"
+        className="flex items-center justify-between w-full bg-gray-800 p-3 rounded-lg border border-gray-700 hover:brightness-110 transition-all"
         aria-haspopup="true"
         aria-expanded={isOpen}
       >
@@ -54,16 +55,16 @@ const MonthSelector: React.FC<MonthSelectorProps> = ({ selectedMonth, setSelecte
       </button>
 
       {isOpen && (
-        <div className="absolute top-full right-0 mt-2 w-72 bg-gray-700 border border-gray-600 rounded-lg shadow-2xl p-4 z-10 animate-fade-in-down">
+        <div className="absolute top-full right-0 mt-2 w-72 bg-gray-800 border border-gray-600 rounded-lg shadow-2xl p-4 z-10 animate-fade-in-down">
           <div className="flex justify-between items-center mb-4">
-            <button onClick={() => setViewYear(y => y - 1)} className="p-2 rounded-full hover:bg-gray-600 transition-colors">
+            <button onClick={() => setViewYear(y => y - 1)} className="p-2 rounded-full hover:bg-gray-700 transition-colors">
                 <ChevronLeftIcon className="w-5 h-5 text-gray-300"/>
             </button>
             <span className="font-bold text-white text-lg">{viewYear}</span>
             <button 
                 onClick={() => setViewYear(y => y + 1)} 
                 disabled={viewYear >= today.getFullYear()}
-                className="p-2 rounded-full hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                className="p-2 rounded-full hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                 <ChevronRightIcon className="w-5 h-5 text-gray-300"/>
             </button>
           </div>
@@ -78,7 +79,7 @@ const MonthSelector: React.FC<MonthSelectorProps> = ({ selectedMonth, setSelecte
                   onClick={() => handleMonthSelect(index)}
                   disabled={isFuture}
                   className={`p-3 text-sm rounded-md transition-colors
-                    ${isSelected ? 'bg-amber-600 text-white font-bold' : 'text-gray-200 hover:bg-gray-600'}
+                    ${isSelected ? 'bg-amber-600 text-white font-bold' : 'text-gray-200 hover:bg-gray-700'}
                     ${isFuture ? 'opacity-50 cursor-not-allowed' : ''}
                   `}
                 >

@@ -13,6 +13,13 @@ export interface Service {
     notes?: string;
 }
 
+export interface Product {
+    id: string;
+    name: string;
+    price: number;
+    quantity: number;
+}
+
 export interface Appointment {
     id: string;
     clientName: string;
@@ -86,6 +93,16 @@ export interface SpecialDay {
     };
 }
 
+export interface ThemeSettings {
+    backgroundColor: string;
+    cardColor: string;
+    sidebarColor: string;
+    textColor: string;
+    secondaryTextColor: string;
+    accentColor: string;
+    inputColor: string;
+}
+
 export interface Settings {
     monthlyGoal: number;
     businessHours: {
@@ -101,4 +118,5 @@ export interface Settings {
         period: number; // months, 0 for indefinite
         autoBackup: boolean;
     };
+    theme?: ThemeSettings;
 }
