@@ -137,7 +137,14 @@ const loadFromStorage = <T>(key: string, initialValue: T): T => {
 
 // Custom Hook to manage persistent state
 function usePersistentState<T>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
+    // We initialize state lazy-ly. However, if the key changes (user switch), we need to update the state.
+    // The initial useState call only runs on mount.
     const [state, setState] = useState<T>(() => loadFromStorage(key, initialValue));
+
+    // Effect to reload data when key changes (e.g. user login/logout)
+    useEffect(() => {
+        setState(loadFromStorage(key, initialValue));
+    }, [key]); // Depend on key to reload
 
     useEffect(() => {
         try {
@@ -150,27 +157,40 @@ function usePersistentState<T>(key: string, initialValue: T): [T, React.Dispatch
     return [state, setState];
 }
 
-export const useBarberData = () => {
+export const useBarberData = (currentUserEmail: string = '') => {
+    
+    // Create a prefix based on the user email (sanitized) to isolate data
+    // If no email (guest/legacy), use 'effisync' default prefix
+    const safeEmail = currentUserEmail ? currentUserEmail.replace(/[^a-zA-Z0-9]/g, '_') : '';
+    const prefix = safeEmail ? `user_${safeEmail}` : 'effisync';
+
     // Determine initial data: try localStorage first, otherwise generate mock data
     const initialData = useMemo(() => {
-        const hasData = window.localStorage.getItem('effisync_appointments');
+        const hasData = window.localStorage.getItem(`${prefix}_appointments`);
         if (hasData) {
             return { appointments: [], expenses: [] }; // Will be loaded by usePersistentState
         }
+        // Only generate mock data for the default view or new users if desired
+        // For a "Real" app feeling, maybe start empty for new real users? 
+        // Let's keep mock data for now so the app doesn't look broken empty.
         return generateMonthlyData();
-    }, []);
+    }, [prefix]);
 
-    // Use Persistent State Hook for Catalogs and Data
-    const [services, setServices] = usePersistentState<Service[]>('effisync_services', SERVICES_CATALOG);
-    const [products, setProducts] = usePersistentState<Product[]>('effisync_products', PRODUCTS_CATALOG);
-    const [appointments, setAppointments] = usePersistentState<Appointment[]>('effisync_appointments', initialData.appointments.length ? initialData.appointments : []);
-    const [expenses, setExpenses] = usePersistentState<Expense[]>('effisync_expenses', initialData.expenses.length ? initialData.expenses : []);
-    const [clients, setClients] = usePersistentState<Client[]>('effisync_clients', CLIENTS_CATALOG);
-    const [professionals, setProfessionals] = usePersistentState<Professional[]>('effisync_professionals', PROFESSIONALS_CATALOG);
+    // Use Persistent State Hook for Catalogs and Data with Dynamic Keys
+    const [services, setServices] = usePersistentState<Service[]>(`${prefix}_services`, SERVICES_CATALOG);
+    const [products, setProducts] = usePersistentState<Product[]>(`${prefix}_products`, PRODUCTS_CATALOG);
+    const [appointments, setAppointments] = usePersistentState<Appointment[]>(`${prefix}_appointments`, initialData.appointments.length ? initialData.appointments : []);
+    const [expenses, setExpenses] = usePersistentState<Expense[]>(`${prefix}_expenses`, initialData.expenses.length ? initialData.expenses : []);
+    const [clients, setClients] = usePersistentState<Client[]>(`${prefix}_clients`, CLIENTS_CATALOG);
+    const [professionals, setProfessionals] = usePersistentState<Professional[]>(`${prefix}_professionals`, PROFESSIONALS_CATALOG);
     
-    // Settings has custom initialization logic for auto-repair, so we keep manual useState but use effect for persistence
-    const [settings, setSettings] = useState<Settings>(() => {
-        const loaded = loadFromStorage('effisync_settings', INITIAL_SETTINGS);
+    // Settings has custom initialization logic
+    const [settings, setSettings] = useState<Settings>(INITIAL_SETTINGS);
+
+    // Load Settings Effect with Auto-Repair and Prefix
+    useEffect(() => {
+        const settingsKey = `${prefix}_settings`;
+        const loaded = loadFromStorage(settingsKey, INITIAL_SETTINGS);
         
         // AUTO-REPAIR LOGIC for LOGO:
         const isDefaultName = loaded.shopName === 'EffiSync Manager';
@@ -180,29 +200,31 @@ export const useBarberData = () => {
 
         const shouldForceUpdate = isDefaultName || isMissingLogo || isOldBase64 || isDifferentVersion;
 
+        let finalSettings = loaded;
+
         if (shouldForceUpdate) {
-            return {
+            finalSettings = {
                 ...loaded,
                 shopLogoUrl: EFFISYNC_LOGO_SVG,
                 theme: loaded.theme || INITIAL_SETTINGS.theme
             };
         }
 
-        if (!loaded.theme) {
-            return { ...loaded, theme: INITIAL_SETTINGS.theme };
+        if (!finalSettings.theme) {
+            finalSettings = { ...finalSettings, theme: INITIAL_SETTINGS.theme };
         }
-        if (!loaded.theme.sidebarColor) {
-             return { ...loaded, theme: { ...INITIAL_SETTINGS.theme, ...loaded.theme } };
+        if (!finalSettings.theme?.sidebarColor) {
+             finalSettings = { ...finalSettings, theme: { ...INITIAL_SETTINGS.theme, ...finalSettings.theme! } };
         }
-        return loaded;
-    });
+        setSettings(finalSettings);
+    }, [prefix]);
     
     const [selectedMonth, setSelectedMonth] = useState(new Date());
 
     // Settings Persistence Effect
     useEffect(() => {
-        localStorage.setItem('effisync_settings', JSON.stringify(settings));
-    }, [settings]);
+        localStorage.setItem(`${prefix}_settings`, JSON.stringify(settings));
+    }, [settings, prefix]);
 
     // --- DATA RETENTION POLICY ENFORCEMENT ---
     useEffect(() => {
@@ -564,14 +586,14 @@ export const useBarberData = () => {
     }, [setProfessionals]);
 
     const resetAllData = useCallback(() => {
-        // 1. Clear Local Storage keys related to the app
-        localStorage.removeItem('effisync_services');
-        localStorage.removeItem('effisync_products');
-        localStorage.removeItem('effisync_appointments');
-        localStorage.removeItem('effisync_expenses');
-        localStorage.removeItem('effisync_clients');
-        localStorage.removeItem('effisync_professionals');
-        localStorage.removeItem('effisync_settings');
+        // 1. Clear Local Storage keys related to the app AND the current user prefix
+        localStorage.removeItem(`${prefix}_services`);
+        localStorage.removeItem(`${prefix}_products`);
+        localStorage.removeItem(`${prefix}_appointments`);
+        localStorage.removeItem(`${prefix}_expenses`);
+        localStorage.removeItem(`${prefix}_clients`);
+        localStorage.removeItem(`${prefix}_professionals`);
+        localStorage.removeItem(`${prefix}_settings`);
 
         // 2. Reset State to Initial/Empty Values (Factory Reset)
         setAppointments([]);
@@ -582,7 +604,7 @@ export const useBarberData = () => {
         setClients(CLIENTS_CATALOG);
         setProfessionals(PROFESSIONALS_CATALOG);
         setSettings(INITIAL_SETTINGS);
-    }, [setAppointments, setExpenses, setServices, setProducts, setClients, setProfessionals, setSettings]);
+    }, [setAppointments, setExpenses, setServices, setProducts, setClients, setProfessionals, setSettings, prefix]);
 
     return {
         // Full Data

@@ -15,6 +15,8 @@ import Notification from './components/Notification';
 import BottomNav from './components/BottomNav';
 import MobileMenuPage from './components/MobileMenuPage';
 import Login from './components/Login';
+import { auth } from './services/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 
 const App: React.FC = () => {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -24,7 +26,7 @@ const App: React.FC = () => {
     const [notification, setNotification] = useState<string | null>(null);
     const [professionalScheduleFilter, setProfessionalScheduleFilter] = useState<string | null>(null);
 
-
+    // Pass the current user email to the hook to isolate data per user
     const { 
         services, 
         products,
@@ -43,23 +45,49 @@ const App: React.FC = () => {
         selectedMonth,
         setSelectedMonth,
         actions 
-    } = useBarberData();
+    } = useBarberData(currentUserEmail);
 
-    // --- SESSION PERSISTENCE ---
+    // --- SESSION PERSISTENCE (FIREBASE & LOCAL) ---
     useEffect(() => {
-        const checkSession = () => {
+        let unsubscribe = () => {};
+
+        // 1. Check for local storage legacy/manual login
+        const checkLocalSession = () => {
             const session = localStorage.getItem('effisync_session');
             const storedUser = localStorage.getItem('effisync_current_user');
 
-            if (session === 'active') {
+            if (session === 'active' && storedUser) {
                 setIsAuthenticated(true);
-                if (storedUser) {
-                    setCurrentUserEmail(storedUser);
-                }
+                setCurrentUserEmail(storedUser);
+                setIsLoadingSession(false);
+                return true;
             }
-            setIsLoadingSession(false);
+            return false;
         };
-        checkSession();
+
+        // 2. Check for Real Firebase Auth
+        if (auth) {
+            unsubscribe = onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    setIsAuthenticated(true);
+                    setCurrentUserEmail(user.email || '');
+                    localStorage.setItem('effisync_current_user', user.email || ''); // Sync for consistency
+                } else {
+                    // Only sign out if local session is also invalid
+                    if (!checkLocalSession()) {
+                        setIsAuthenticated(false);
+                        setCurrentUserEmail('');
+                    }
+                }
+                setIsLoadingSession(false);
+            });
+        } else {
+            // Fallback if Firebase not configured
+            checkLocalSession();
+            setIsLoadingSession(false);
+        }
+
+        return () => unsubscribe();
     }, []);
 
     // --- THEME INJECTION ---
@@ -115,6 +143,9 @@ const App: React.FC = () => {
     };
 
     const handleLogout = () => {
+        if (auth) {
+            auth.signOut();
+        }
         setIsAuthenticated(false);
         setCurrentUserEmail('');
         localStorage.removeItem('effisync_session');
@@ -148,6 +179,7 @@ const App: React.FC = () => {
     const handleExportData = () => {
         const dataToExport = {
             timestamp: new Date().toISOString(),
+            user: currentUserEmail,
             settings,
             services,
             products,
@@ -160,7 +192,7 @@ const App: React.FC = () => {
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(dataToExport, null, 2));
         const downloadAnchorNode = document.createElement('a');
         downloadAnchorNode.setAttribute("href", dataStr);
-        downloadAnchorNode.setAttribute("download", `effisync_backup_${new Date().toISOString().split('T')[0]}.json`);
+        downloadAnchorNode.setAttribute("download", `effisync_backup_${currentUserEmail}_${new Date().toISOString().split('T')[0]}.json`);
         document.body.appendChild(downloadAnchorNode); // required for firefox
         downloadAnchorNode.click();
         downloadAnchorNode.remove();

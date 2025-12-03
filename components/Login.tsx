@@ -2,6 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { GoogleIcon, ScissorsIcon } from './icons';
 import Modal from './Modal';
+import { auth, googleProvider } from '../services/firebase';
+import { signInWithPopup } from 'firebase/auth';
 
 interface LoginProps {
   onLogin: (rememberMe: boolean, email: string) => void;
@@ -43,9 +45,8 @@ const Login: React.FC<LoginProps> = ({ onLogin, shopLogoUrl }) => {
     setSuccessMessage('');
     setIsLoading(true);
 
-    // Simulate network delay for realism
+    // Local Login Logic (Legacy/Manual)
     setTimeout(() => {
-        // Load users from local storage
         const storedUsers = localStorage.getItem('effisync_users');
         const users = storedUsers ? JSON.parse(storedUsers) : [];
 
@@ -82,13 +83,12 @@ const Login: React.FC<LoginProps> = ({ onLogin, shopLogoUrl }) => {
                 return;
             }
 
-            // Save new user (Simple obfuscation with btoa for demo purposes - not real encryption)
             const newUser = { email, password: btoa(password) }; 
             users.push(newUser);
             localStorage.setItem('effisync_users', JSON.stringify(users));
             
             setSuccessMessage('Conta criada com sucesso! Faça login.');
-            setIsRegistering(false); // Switch back to login mode
+            setIsRegistering(false);
             setEmail('');
             setPassword('');
             setConfirmPassword('');
@@ -96,14 +96,11 @@ const Login: React.FC<LoginProps> = ({ onLogin, shopLogoUrl }) => {
 
         } else {
             // LOGIN LOGIC
-            // 1. Check local storage users (checking both plain text for old users and btoa for new)
             const validUser = users.find((u: any) => 
                 u.email.toLowerCase() === email.toLowerCase() && 
                 (u.password === password || u.password === btoa(password))
             );
 
-            // 2. Fallback for 'admin' ONLY if no users exist yet (Legacy/Setup support)
-            // If users exist, admin/admin is disabled unless explicitly registered.
             const isLegacyAdmin = users.length === 0 && email.toLowerCase() === 'admin' && password === 'admin';
 
             if (validUser || isLegacyAdmin) {
@@ -127,115 +124,30 @@ const Login: React.FC<LoginProps> = ({ onLogin, shopLogoUrl }) => {
       }, 1500);
   };
 
-  const handleGoogleLogin = () => {
-    // Robust Popup Centering (Works on Dual Monitors)
-    const width = 500;
-    const height = 600;
-    
-    const screenLeft = window.screenLeft !== undefined ? window.screenLeft : window.screenX;
-    const screenTop = window.screenTop !== undefined ? window.screenTop : window.screenY;
+  const handleGoogleLogin = async () => {
+    if (!auth || !googleProvider) {
+        setError('Configuração do Firebase não encontrada. Verifique o arquivo .env.');
+        return;
+    }
 
-    const screenWidth = window.innerWidth ? window.innerWidth : document.documentElement.clientWidth ? document.documentElement.clientWidth : screen.width;
-    const screenHeight = window.innerHeight ? window.innerHeight : document.documentElement.clientHeight ? document.documentElement.clientHeight : screen.height;
-
-    const left = screenLeft + (screenWidth - width) / 2;
-    const top = screenTop + (screenHeight - height) / 2;
-
-    const popup = window.open(
-      '',
-      'google_login_popup',
-      `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,status=no,resizable=yes`
-    );
-
-    if (popup) {
-        const googleLoginContent = `
-            <html>
-                <head>
-                    <title>Fazer login com o Google</title>
-                    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap" rel="stylesheet">
-                    <style>
-                        body { 
-                            font-family: 'Roboto', sans-serif; 
-                            display: flex; 
-                            flex-direction: column; 
-                            align-items: center; 
-                            justify-content: center; 
-                            height: 100vh; 
-                            margin: 0; 
-                            background: #fff; 
-                            color: #202124; 
-                        }
-                        .logo-container { margin-bottom: 30px; }
-                        .spinner { 
-                            border: 4px solid rgba(0, 0, 0, 0.1); 
-                            border-left-color: #4285F4; 
-                            border-radius: 50%; 
-                            width: 40px; 
-                            height: 40px; 
-                            animation: spin 1s linear infinite; 
-                            margin-bottom: 24px; 
-                        }
-                        h2 { 
-                            font-weight: 500; 
-                            margin: 0 0 8px 0; 
-                            font-size: 24px; 
-                        }
-                        p { 
-                            color: #5f6368; 
-                            font-size: 16px; 
-                            margin: 0; 
-                        }
-                        .footer {
-                            margin-top: 40px;
-                            font-size: 12px;
-                            color: #5f6368;
-                        }
-                        @keyframes spin { 
-                            0% { transform: rotate(0deg); } 
-                            100% { transform: rotate(360deg); } 
-                        }
-                    </style>
-                </head>
-                <body>
-                    <div class="logo-container">
-                        <svg viewBox="0 0 48 48" width="48" height="48" xmlns="http://www.w3.org/2000/svg">
-                            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
-                            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.42-4.55H24v8.51h13.9c-.59 2.97-2.27 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
-                            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
-                            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
-                            <path fill="none" d="M0 0h48v48H0z"></path>
-                        </svg>
-                    </div>
-                    <div class="spinner"></div>
-                    <h2>Um momento</h2>
-                    <p>Conectando sua conta Google...</p>
-                    <div class="footer">EffiSync Manager • Seguro e Privado</div>
-                </body>
-            </html>
-        `;
-
-        popup.document.write(googleLoginContent);
-
-        // Simulate network delay and authentication
-        setTimeout(() => {
-            if (!popup.closed) popup.close();
-            
-            // Register a mock Google user in local storage
-            const storedUsers = localStorage.getItem('effisync_users');
-            const users = storedUsers ? JSON.parse(storedUsers) : [];
-            const googleUserEmail = "usuario.google@gmail.com";
-            
-            if (!users.find((u: any) => u.email === googleUserEmail)) {
-                // Save google user
-                users.push({ email: googleUserEmail, password: "google-oauth-token-placeholder" });
-                localStorage.setItem('effisync_users', JSON.stringify(users));
-            }
-            
-            setSuccessMessage('Login com Google realizado com sucesso!');
-            setTimeout(() => {
-                 onLogin(true, googleUserEmail); // Always remember google login session
-            }, 800);
-        }, 3000); // 3 seconds delay for better UX
+    setIsLoading(true);
+    try {
+        const result = await signInWithPopup(auth, googleProvider);
+        const user = result.user;
+        if (user && user.email) {
+            onLogin(true, user.email);
+        }
+    } catch (error: any) {
+        console.error("Google Login Error", error);
+        if (error.code === 'auth/popup-closed-by-user') {
+            setError('Login cancelado pelo usuário.');
+        } else if (error.code === 'auth/configuration-not-found') {
+            setError('Autenticação Google não configurada no Firebase Console.');
+        } else {
+            setError('Falha ao autenticar com o Google. Verifique sua conexão e configurações.');
+        }
+    } finally {
+        setIsLoading(false);
     }
   };
 
