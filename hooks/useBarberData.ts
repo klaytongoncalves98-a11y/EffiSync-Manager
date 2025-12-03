@@ -170,9 +170,6 @@ export const useBarberData = (currentUserEmail: string = '') => {
         if (hasData) {
             return { appointments: [], expenses: [] }; // Will be loaded by usePersistentState
         }
-        // Only generate mock data for the default view or new users if desired
-        // For a "Real" app feeling, maybe start empty for new real users? 
-        // Let's keep mock data for now so the app doesn't look broken empty.
         return generateMonthlyData();
     }, [prefix]);
 
@@ -193,12 +190,12 @@ export const useBarberData = (currentUserEmail: string = '') => {
         const loaded = loadFromStorage(settingsKey, INITIAL_SETTINGS);
         
         // AUTO-REPAIR LOGIC for LOGO:
-        const isDefaultName = loaded.shopName === 'EffiSync Manager';
+        // FIX: Removed the check for 'isDefaultName' to prevent overriding user-uploaded logos.
+        // We only reset if the logo is completely missing or is the old broken base64 format.
         const isMissingLogo = !loaded.shopLogoUrl;
-        const isOldBase64 = loaded.shopLogoUrl && loaded.shopLogoUrl.includes('base64');
-        const isDifferentVersion = isDefaultName && loaded.shopLogoUrl !== EFFISYNC_LOGO_SVG;
+        const isOldBase64 = loaded.shopLogoUrl && loaded.shopLogoUrl.includes('base64') && !loaded.shopLogoUrl.includes('svg+xml');
 
-        const shouldForceUpdate = isDefaultName || isMissingLogo || isOldBase64 || isDifferentVersion;
+        const shouldForceUpdate = isMissingLogo || isOldBase64;
 
         let finalSettings = loaded;
 
@@ -511,6 +508,10 @@ export const useBarberData = (currentUserEmail: string = '') => {
                     nextDate.setDate(nextDate.getDate() + 1);
                 } else if (recurrence.type === 'weekly') {
                     nextDate.setDate(nextDate.getDate() + 7);
+                } else if (recurrence.type === 'biweekly') {
+                    nextDate.setDate(nextDate.getDate() + 15);
+                } else if (recurrence.type === 'twenty_days') {
+                    nextDate.setDate(nextDate.getDate() + 20);
                 } else if (recurrence.type === 'monthly') {
                     nextDate.setMonth(nextDate.getMonth() + 1);
                 }

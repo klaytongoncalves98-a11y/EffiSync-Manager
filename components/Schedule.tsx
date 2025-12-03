@@ -24,7 +24,7 @@ interface ScheduleProps {
 }
 
 export interface RecurrenceSettings {
-    type: 'none' | 'daily' | 'weekly' | 'monthly';
+    type: 'none' | 'daily' | 'weekly' | 'biweekly' | 'twenty_days' | 'monthly';
     count: number;
 }
 
@@ -257,182 +257,187 @@ const AppointmentForm: React.FC<{
     };
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-4">
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div ref={searchContainerRef} className="relative">
-                    <label className="block text-sm font-medium text-gray-300 mb-1">Cliente</label>
+        <form onSubmit={handleSubmit} className="flex flex-col h-[75vh] md:h-auto md:max-h-[80vh]">
+            <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-4 pb-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div ref={searchContainerRef} className="relative">
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Cliente</label>
+                        <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={handleSearchChange}
+                            onFocus={() => searchQuery && setShowSuggestions(true)}
+                            placeholder="Digite para buscar..."
+                            autoComplete="off"
+                            required
+                            className="w-full bg-gray-700 text-white p-2 rounded-md border border-gray-600 focus:ring-amber-500 focus:border-amber-500"
+                        />
+                        {showSuggestions && (
+                            <ul className="absolute z-10 w-full bg-gray-600 border border-gray-500 rounded-md mt-1 max-h-48 overflow-y-auto shadow-lg">
+                                {filteredClients.length > 0 ? (
+                                    filteredClients.map(client => (
+                                        <li
+                                            key={client.id}
+                                            onClick={() => handleSelectClient(client)}
+                                            className="p-2 text-white hover:bg-amber-600 cursor-pointer"
+                                        >
+                                            {client.name}
+                                        </li>
+                                    ))
+                                ) : (
+                                    <li className="p-2 text-gray-400 italic">Nenhum cliente encontrado.</li>
+                                )}
+                            </ul>
+                        )}
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Telefone</label>
+                        <input
+                            type="tel"
+                            value={formatPhoneNumber(selectedClient?.phone || '')}
+                            disabled
+                            placeholder="Selecione um cliente"
+                            className="w-full bg-gray-900 text-gray-400 p-2 rounded-md border border-gray-600 cursor-not-allowed"
+                        />
+                    </div>
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Data</label>
                     <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={handleSearchChange}
-                        onFocus={() => searchQuery && setShowSuggestions(true)}
-                        placeholder="Digite para buscar..."
-                        autoComplete="off"
+                        type="date"
+                        value={appointmentDate}
+                        onChange={(e) => {
+                            setAppointmentDate(e.target.value);
+                            setSelectedTime(null); // Reset time selection when date changes
+                        }}
+                        min={new Date().toISOString().split('T')[0]}
                         required
                         className="w-full bg-gray-700 text-white p-2 rounded-md border border-gray-600 focus:ring-amber-500 focus:border-amber-500"
                     />
-                    {showSuggestions && (
-                        <ul className="absolute z-10 w-full bg-gray-600 border border-gray-500 rounded-md mt-1 max-h-48 overflow-y-auto shadow-lg">
-                            {filteredClients.length > 0 ? (
-                                filteredClients.map(client => (
-                                    <li
-                                        key={client.id}
-                                        onClick={() => handleSelectClient(client)}
-                                        className="p-2 text-white hover:bg-amber-600 cursor-pointer"
-                                    >
-                                        {client.name}
-                                    </li>
-                                ))
-                            ) : (
-                                <li className="p-2 text-gray-400 italic">Nenhum cliente encontrado.</li>
-                            )}
-                        </ul>
-                    )}
                 </div>
-                 <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1">Telefone</label>
-                     <input
-                        type="tel"
-                        value={formatPhoneNumber(selectedClient?.phone || '')}
-                        disabled
-                        placeholder="Selecione um cliente"
-                        className="w-full bg-gray-900 text-gray-400 p-2 rounded-md border border-gray-600 cursor-not-allowed"
-                     />
-                </div>
-            </div>
-            <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Data</label>
-                <input
-                    type="date"
-                    value={appointmentDate}
-                    onChange={(e) => {
-                        setAppointmentDate(e.target.value);
-                        setSelectedTime(null); // Reset time selection when date changes
-                    }}
-                    min={new Date().toISOString().split('T')[0]}
-                    required
-                    className="w-full bg-gray-700 text-white p-2 rounded-md border border-gray-600 focus:ring-amber-500 focus:border-amber-500"
-                />
-            </div>
-             <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Profissional</label>
-                <select
-                    value={professionalId}
-                    onChange={(e) => setProfessionalId(e.target.value)}
-                    required
-                    className="w-full bg-gray-700 text-white p-2 rounded-md border border-gray-600 focus:ring-amber-500 focus:border-amber-500"
-                >
-                    <option value="" disabled>Selecione um profissional</option>
-                    {professionals.map(p => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                </select>
-            </div>
-            <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Serviços</label>
-                <div className="space-y-2 max-h-48 overflow-y-auto bg-gray-900 p-2 rounded-md">
-                    {services.map(service => (
-                        <label key={service.id} className="flex items-center space-x-3 cursor-pointer p-2 hover:bg-gray-700 rounded">
-                            <input
-                                type="checkbox"
-                                checked={selectedServices.some(s => s.id === service.id)}
-                                onChange={() => handleServiceToggle(service)}
-                                className="form-checkbox h-5 w-5 bg-gray-800 border-gray-600 text-amber-600 focus:ring-amber-500"
-                            />
-                            <span className="text-white">{service.name} - {service.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
-                            <span className="text-sm text-gray-400 ml-auto">{service.duration} min</span>
-                        </label>
-                    ))}
-                </div>
-            </div>
-            {showComboSuggestion && comboService && (
-                <div className="bg-amber-800/50 border border-amber-600 p-3 rounded-lg text-center animate-fade-in-down">
-                    <p className="text-amber-200 text-sm mb-2">
-                        Economize! Troque por '{comboService.name}' por {comboService.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.
-                    </p>
-                    <button
-                        type="button"
-                        onClick={handleSwitchToCombo}
-                        className="bg-amber-600 text-white px-3 py-1 text-sm rounded-md hover:bg-amber-700 transition-colors"
+                <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Profissional</label>
+                    <select
+                        value={professionalId}
+                        onChange={(e) => setProfessionalId(e.target.value)}
+                        required
+                        className="w-full bg-gray-700 text-white p-2 rounded-md border border-gray-600 focus:ring-amber-500 focus:border-amber-500"
                     >
-                        Trocar e Economizar
-                    </button>
+                        <option value="" disabled>Selecione um profissional</option>
+                        {professionals.map(p => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                    </select>
                 </div>
-            )}
-             <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Horários Disponíveis</label>
-                <div className="p-2 bg-gray-900 rounded-md max-h-48 overflow-y-auto">
-                    {isShopClosedOnSelectedDate ? (
-                         <p className="text-center text-amber-400 p-4">A barbearia está fechada neste dia.</p>
-                    ) : professionalId && selectedServices.length > 0 ? (
-                        availableSlots.length > 0 ? (
-                            <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
-                                {availableSlots.map(time => (
-                                    <button
-                                        key={time}
-                                        type="button"
-                                        onClick={() => setSelectedTime(time)}
-                                        className={`p-2 rounded-md text-sm font-semibold transition-colors ${
-                                            selectedTime === time 
-                                                ? 'bg-amber-600 text-white ring-2 ring-amber-400' 
-                                                : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
-                                        }`}
-                                    >
-                                        {time}
-                                    </button>
-                                ))}
-                            </div>
-                        ) : (
-                            <p className="text-center text-gray-400 p-4">Nenhum horário disponível para esta data e seleção.</p>
-                        )
-                    ) : (
-                        <p className="text-center text-gray-500 p-4 italic">Selecione um profissional e um serviço para ver os horários.</p>
-                    )}
-                </div>
-            </div>
-             {!appointment && (
-                <div className="p-4 bg-gray-900 rounded-lg border border-gray-700 space-y-3">
-                    <label className="block text-sm font-medium text-gray-300">Recorrência (Opcional)</label>
-                    <div className="grid grid-cols-2 gap-4">
-                        <select
-                            value={recurrence.type}
-                            onChange={(e) => setRecurrence(prev => ({ ...prev, type: e.target.value as RecurrenceSettings['type'] }))}
-                            className="w-full bg-gray-700 text-white p-2 rounded-md border border-gray-600 focus:ring-amber-500 focus:border-amber-500"
-                        >
-                            <option value="none">Não repetir</option>
-                            <option value="daily">Diário</option>
-                            <option value="weekly">Semanal</option>
-                            <option value="monthly">Mensal</option>
-                        </select>
-                        {recurrence.type !== 'none' && (
-                            <div className="flex items-center space-x-2">
-                                <label htmlFor="recurrence-count" className="text-sm text-gray-400">Repetir</label>
+                <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Serviços</label>
+                    <div className="space-y-2 max-h-48 overflow-y-auto bg-gray-900 p-2 rounded-md">
+                        {services.map(service => (
+                            <label key={service.id} className="flex items-center space-x-3 cursor-pointer p-2 hover:bg-gray-700 rounded">
                                 <input
-                                    type="number"
-                                    id="recurrence-count"
-                                    value={recurrence.count}
-                                    onChange={(e) => setRecurrence(prev => ({ ...prev, count: Math.max(1, parseInt(e.target.value) || 1) }))}
-                                    min="1"
-                                    max="52"
-                                    className="w-20 bg-gray-700 text-white p-2 rounded-md border border-gray-600 focus:ring-amber-500 focus:border-amber-500"
+                                    type="checkbox"
+                                    checked={selectedServices.some(s => s.id === service.id)}
+                                    onChange={() => handleServiceToggle(service)}
+                                    className="form-checkbox h-5 w-5 bg-gray-800 border-gray-600 text-amber-600 focus:ring-amber-500"
                                 />
-                                <label htmlFor="recurrence-count" className="text-sm text-gray-400">vezes</label>
-                            </div>
+                                <span className="text-white">{service.name} - {service.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                                <span className="text-sm text-gray-400 ml-auto">{service.duration} min</span>
+                            </label>
+                        ))}
+                    </div>
+                </div>
+                {showComboSuggestion && comboService && (
+                    <div className="bg-amber-800/50 border border-amber-600 p-3 rounded-lg text-center animate-fade-in-down">
+                        <p className="text-amber-200 text-sm mb-2">
+                            Economize! Troque por '{comboService.name}' por {comboService.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={handleSwitchToCombo}
+                            className="bg-amber-600 text-white px-3 py-1 text-sm rounded-md hover:bg-amber-700 transition-colors"
+                        >
+                            Trocar e Economizar
+                        </button>
+                    </div>
+                )}
+                <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Horários Disponíveis</label>
+                    <div className="p-2 bg-gray-900 rounded-md max-h-48 overflow-y-auto">
+                        {isShopClosedOnSelectedDate ? (
+                            <p className="text-center text-amber-400 p-4">A barbearia está fechada neste dia.</p>
+                        ) : professionalId && selectedServices.length > 0 ? (
+                            availableSlots.length > 0 ? (
+                                <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
+                                    {availableSlots.map(time => (
+                                        <button
+                                            key={time}
+                                            type="button"
+                                            onClick={() => setSelectedTime(time)}
+                                            className={`p-2 rounded-md text-sm font-semibold transition-colors ${
+                                                selectedTime === time 
+                                                    ? 'bg-amber-600 text-white ring-2 ring-amber-400' 
+                                                    : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
+                                            }`}
+                                        >
+                                            {time}
+                                        </button>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-center text-gray-400 p-4">Nenhum horário disponível para esta data e seleção.</p>
+                            )
+                        ) : (
+                            <p className="text-center text-gray-500 p-4 italic">Selecione um profissional e um serviço para ver os horários.</p>
                         )}
                     </div>
                 </div>
-            )}
-             <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Observação (Opcional)</label>
-                <textarea
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    rows={2}
-                    placeholder="Ex: Cliente prefere a máquina 2 nas laterais, tem alergia a..."
-                    className="w-full bg-gray-700 text-white p-2 rounded-md border border-gray-600 focus:ring-amber-500 focus:border-amber-500"
-                />
+                {!appointment && (
+                    <div className="p-4 bg-gray-900 rounded-lg border border-gray-700 space-y-3">
+                        <label className="block text-sm font-medium text-gray-300">Recorrência (Opcional)</label>
+                        <div className="grid grid-cols-2 gap-4">
+                            <select
+                                value={recurrence.type}
+                                onChange={(e) => setRecurrence(prev => ({ ...prev, type: e.target.value as RecurrenceSettings['type'] }))}
+                                className="w-full bg-gray-700 text-white p-2 rounded-md border border-gray-600 focus:ring-amber-500 focus:border-amber-500"
+                            >
+                                <option value="none">Não repetir</option>
+                                <option value="daily">Diário (Todos os dias)</option>
+                                <option value="weekly">Semanal (7 dias)</option>
+                                <option value="biweekly">Quinzenal (15 dias)</option>
+                                <option value="twenty_days">A cada 20 dias</option>
+                                <option value="monthly">Mensal</option>
+                            </select>
+                            {recurrence.type !== 'none' && (
+                                <div className="flex items-center space-x-2">
+                                    <label htmlFor="recurrence-count" className="text-sm text-gray-400">Repetir</label>
+                                    <input
+                                        type="number"
+                                        id="recurrence-count"
+                                        value={recurrence.count}
+                                        onChange={(e) => setRecurrence(prev => ({ ...prev, count: Math.max(1, parseInt(e.target.value) || 1) }))}
+                                        min="1"
+                                        max="52"
+                                        className="w-20 bg-gray-700 text-white p-2 rounded-md border border-gray-600 focus:ring-amber-500 focus:border-amber-500"
+                                    />
+                                    <label htmlFor="recurrence-count" className="text-sm text-gray-400">vezes</label>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+                <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1">Observação (Opcional)</label>
+                    <textarea
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        rows={2}
+                        placeholder="Ex: Cliente prefere a máquina 2 nas laterais, tem alergia a..."
+                        className="w-full bg-gray-700 text-white p-2 rounded-md border border-gray-600 focus:ring-amber-500 focus:border-amber-500"
+                    />
+                </div>
             </div>
-            <div className="flex justify-end space-x-3 pt-4">
+            {/* Fixed Footer Buttons */}
+            <div className="pt-4 border-t border-gray-700 flex justify-end space-x-3 mt-auto bg-gray-800">
                 <button type="button" onClick={onClose} className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-500">Cancelar</button>
                 <button type="submit" className="bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700">Agendar</button>
             </div>
