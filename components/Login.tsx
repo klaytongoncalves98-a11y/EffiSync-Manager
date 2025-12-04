@@ -185,6 +185,8 @@ const Login: React.FC<LoginProps> = ({ onLogin, shopLogoUrl }) => {
         console.error("Google Login Error", error);
         if (error.code === 'auth/popup-closed-by-user') {
             setError('Login cancelado pelo usuário.');
+        } else if (error.code === 'auth/popup-blocked') {
+            setError('O popup foi bloqueado. Por favor, permita popups para este site e tente novamente.');
         } else if (error.code === 'auth/configuration-not-found') {
             setError('Autenticação Google não configurada no Firebase Console.');
         } else {

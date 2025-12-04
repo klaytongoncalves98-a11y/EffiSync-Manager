@@ -51,7 +51,7 @@ const App: React.FC = () => {
     useEffect(() => {
         let unsubscribe = () => {};
 
-        // 1. Check for local storage legacy/manual login
+        // 1. Check for local storage legacy/manual login (Fallback only)
         const checkLocalSession = () => {
             const session = localStorage.getItem('effisync_session');
             const storedUser = localStorage.getItem('effisync_current_user');
@@ -69,21 +69,26 @@ const App: React.FC = () => {
         if (auth) {
             unsubscribe = onAuthStateChanged(auth, (user) => {
                 if (user) {
+                    // Valid Firebase User
                     setIsAuthenticated(true);
                     setCurrentUserEmail(user.email || '');
-                    localStorage.setItem('effisync_current_user', user.email || ''); // Sync for consistency
+                    localStorage.setItem('effisync_current_user', user.email || '');
                 } else {
-                    // Only sign out if local session is also invalid
-                    if (!checkLocalSession()) {
-                        setIsAuthenticated(false);
-                        setCurrentUserEmail('');
-                    }
+                    // No Firebase User -> Strict Logout
+                    // When Firebase is active, we IGNORE local legacy sessions to prevent unauthorized access via "Local Mode"
+                    setIsAuthenticated(false);
+                    setCurrentUserEmail('');
+                    localStorage.removeItem('effisync_session'); // Clean up legacy session
                 }
                 setIsLoadingSession(false);
             });
         } else {
-            // Fallback if Firebase not configured
-            checkLocalSession();
+            // Fallback if Firebase not configured (Local Mode)
+            const hasLocal = checkLocalSession();
+            if (!hasLocal) {
+                setIsAuthenticated(false);
+                setCurrentUserEmail('');
+            }
             setIsLoadingSession(false);
         }
 
