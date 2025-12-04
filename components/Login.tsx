@@ -140,12 +140,28 @@ const Login: React.FC<LoginProps> = ({ onLogin, shopLogoUrl }) => {
           await sendPasswordResetEmail(auth, forgotEmail);
           setSuccessMessage(`Link enviado para ${forgotEmail}. Verifique sua caixa de entrada (e spam).`);
           setForgotEmail('');
-          setTimeout(() => setIsForgotPasswordOpen(false), 5000);
+          setTimeout(() => setIsForgotPasswordOpen(false), 6000);
       } catch (err: any) {
           console.error("Reset Password Error:", err);
           let msg = 'Erro ao enviar email.';
-          if (err.code === 'auth/user-not-found') msg = 'Email não encontrado no sistema.';
-          if (err.code === 'auth/invalid-email') msg = 'Email inválido.';
+          
+          if (err.code === 'auth/user-not-found') {
+              // Check if user exists in local storage to give a better error message
+              const storedUsers = localStorage.getItem('effisync_users');
+              const localUsers = storedUsers ? JSON.parse(storedUsers) : [];
+              const localUser = localUsers.find((u: any) => u.email.toLowerCase() === forgotEmail.toLowerCase());
+              
+              if (localUser) {
+                  msg = 'Esta conta foi criada localmente. Registre-se novamente para ativar a recuperação de senha via email.';
+              } else {
+                  msg = 'Email não encontrado no sistema.';
+              }
+          } else if (err.code === 'auth/invalid-email') {
+              msg = 'Email inválido.';
+          } else if (err.code === 'auth/missing-email') {
+              msg = 'Digite um email.';
+          }
+          
           setError(msg);
       } finally {
           setIsLoading(false);
