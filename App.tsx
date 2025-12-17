@@ -16,239 +16,115 @@ import BottomNav from './components/BottomNav';
 import MobileMenuPage from './components/MobileMenuPage';
 import Login from './components/Login';
 import { auth } from './services/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 
 const App: React.FC = () => {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [currentUserEmail, setCurrentUserEmail] = useState<string>('');
+    const [userUid, setUserUid] = useState<string>('');
     const [isLoadingSession, setIsLoadingSession] = useState(true);
     const [currentView, setCurrentView] = useState('dashboard');
     const [notification, setNotification] = useState<string | null>(null);
-    const [professionalScheduleFilter, setProfessionalScheduleFilter] = useState<string | null>(null);
 
-    // Pass the current user email to the hook to isolate data per user
+    // Pass the unique user ID to the hook
     const { 
-        services, 
-        products,
-        appointments, 
-        expenses,
-        clients,
-        professionals,
-        settings,
-        filteredAppointments,
-        filteredExpenses,
-        clientProfiles,
-        kpis, 
-        topServices,
-        revenueByService,
-        historicalData,
-        selectedMonth,
-        setSelectedMonth,
-        actions 
-    } = useBarberData(currentUserEmail);
+        services, products, appointments, expenses, clients, professionals, settings,
+        filteredAppointments, filteredExpenses, clientProfiles, kpis, 
+        topServices, revenueByService, historicalData, selectedMonth,
+        setSelectedMonth, actions 
+    } = useBarberData(userUid);
 
-    // --- SESSION PERSISTENCE (FIREBASE & LOCAL) ---
     useEffect(() => {
-        let unsubscribe = () => {};
-
-        // 1. Check for local storage legacy/manual login (Fallback only)
-        const checkLocalSession = () => {
-            const session = localStorage.getItem('effisync_session');
-            const storedUser = localStorage.getItem('effisync_current_user');
-
-            if (session === 'active' && storedUser) {
+        // Guard against auth being undefined/null if Firebase isn't configured
+        if (!auth) {
+            const localSession = localStorage.getItem('effisync_session');
+            const localUser = localStorage.getItem('effisync_current_user');
+            if (localSession === 'active' && localUser) {
                 setIsAuthenticated(true);
-                setCurrentUserEmail(storedUser);
-                setIsLoadingSession(false);
-                return true;
-            }
-            return false;
-        };
-
-        // 2. Check for Real Firebase Auth
-        if (auth) {
-            unsubscribe = onAuthStateChanged(auth, (user) => {
-                if (user) {
-                    // Valid Firebase User
-                    setIsAuthenticated(true);
-                    setCurrentUserEmail(user.email || '');
-                    localStorage.setItem('effisync_current_user', user.email || '');
-                } else {
-                    // No Firebase User -> Strict Logout
-                    // When Firebase is active, we IGNORE local legacy sessions to prevent unauthorized access via "Local Mode"
-                    setIsAuthenticated(false);
-                    setCurrentUserEmail('');
-                    localStorage.removeItem('effisync_session'); // Clean up legacy session
-                }
-                setIsLoadingSession(false);
-            });
-        } else {
-            // Fallback if Firebase not configured (Local Mode)
-            const hasLocal = checkLocalSession();
-            if (!hasLocal) {
-                setIsAuthenticated(false);
-                setCurrentUserEmail('');
+                setUserUid(localUser);
             }
             setIsLoadingSession(false);
+            return;
         }
 
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
+            if (user) {
+                setIsAuthenticated(true);
+                setUserUid(user.uid);
+                // Also sync local storage flag for "Remember Me" logic compatibility
+                localStorage.setItem('effisync_session', 'active');
+                localStorage.setItem('effisync_current_user', user.uid);
+            } else {
+                setIsAuthenticated(false);
+                setUserUid('');
+                // If Firebase says no user, clear the legacy local flags if they are tied to firebase flow
+                if (localStorage.getItem('effisync_current_user')?.startsWith('fb_') || !localStorage.getItem('effisync_current_user')) {
+                    localStorage.removeItem('effisync_session');
+                    localStorage.removeItem('effisync_current_user');
+                }
+            }
+            setIsLoadingSession(false);
+        });
+        
         return () => unsubscribe();
     }, []);
 
-    // --- THEME INJECTION ---
-    useEffect(() => {
-        if (settings.theme) {
-            // We use generic variables mapped to the tailwind classes being overridden
-            const root = document.documentElement;
-            root.style.setProperty('--app-bg', settings.theme.backgroundColor);
-            root.style.setProperty('--card-bg', settings.theme.cardColor);
-            root.style.setProperty('--sidebar-bg', settings.theme.sidebarColor || settings.theme.cardColor);
-            root.style.setProperty('--text-main', settings.theme.textColor);
-            root.style.setProperty('--text-sec', settings.theme.secondaryTextColor);
-            root.style.setProperty('--accent', settings.theme.accentColor);
-            root.style.setProperty('--input-bg', settings.theme.inputColor);
-        }
-    }, [settings.theme]);
-
-    const themeStyles = `
-        /* Global overrides based on user settings */
-        .bg-gray-900 { background-color: var(--app-bg) !important; }
-        .bg-gray-800 { background-color: var(--card-bg) !important; }
-        
-        /* Specific override for sidebar to use sidebar-bg */
-        aside.bg-gray-800 { background-color: var(--sidebar-bg) !important; }
-
-        /* Input Backgrounds */
-        .bg-gray-700 { background-color: var(--input-bg) !important; }
-        input, select, textarea {
-             background-color: var(--input-bg) !important;
-             color: var(--text-main) !important;
-        }
-
-        .text-gray-200, .text-white { color: var(--text-main) !important; }
-        
-        /* Secondary Text */
-        .text-gray-300, .text-gray-400, .text-gray-500 { color: var(--text-sec) !important; }
-        
-        .bg-amber-600 { background-color: var(--accent) !important; }
-        .text-amber-500, .text-amber-400, .text-amber-600 { color: var(--accent) !important; }
-        .focus\\:ring-amber-500:focus { --tw-ring-color: var(--accent) !important; }
-        .hover\\:bg-amber-700:hover { filter: brightness(0.9); background-color: var(--accent) !important; }
-    `;
-
-
-    const handleLogin = (rememberMe: boolean, email: string) => {
-        setIsAuthenticated(true);
-        setCurrentUserEmail(email);
-        
-        localStorage.setItem('effisync_current_user', email);
-        if (rememberMe) {
-            localStorage.setItem('effisync_session', 'active');
-        }
-    };
-
-    const handleLogout = () => {
+    const handleLogout = async () => {
         if (auth) {
-            auth.signOut();
+            await signOut(auth);
         }
-        setIsAuthenticated(false);
-        setCurrentUserEmail('');
         localStorage.removeItem('effisync_session');
         localStorage.removeItem('effisync_current_user');
-        // Reset view to dashboard for next login
+        setIsAuthenticated(false);
         setCurrentView('dashboard');
     };
 
-    // Show nothing or a loader while checking session to prevent login screen flash
-    if (isLoadingSession) {
-        return <div className="min-h-screen bg-gray-900 flex items-center justify-center text-white">Carregando...</div>;
-    }
-
-    if (!isAuthenticated) {
-        return (
-            <>
-                <Login onLogin={handleLogin} shopLogoUrl={settings.shopLogoUrl} />
-            </>
-        );
-    }
-
-    const showNotification = (message: string) => {
-        setNotification(message);
-    };
-
-    const handleViewProfessionalSchedule = (professionalId: string) => {
-        setProfessionalScheduleFilter(professionalId);
-        setCurrentView('schedule');
-    };
-
-    const handleExportData = () => {
-        const dataToExport = {
-            timestamp: new Date().toISOString(),
-            user: currentUserEmail,
-            settings,
-            services,
-            products,
-            appointments,
-            clients,
-            professionals,
-            expenses
-        };
-        
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(dataToExport, null, 2));
-        const downloadAnchorNode = document.createElement('a');
-        downloadAnchorNode.setAttribute("href", dataStr);
-        downloadAnchorNode.setAttribute("download", `effisync_backup_${currentUserEmail}_${new Date().toISOString().split('T')[0]}.json`);
-        document.body.appendChild(downloadAnchorNode); // required for firefox
-        downloadAnchorNode.click();
-        downloadAnchorNode.remove();
-        showNotification('Dados exportados com sucesso!');
-    };
-
-    const renderView = () => {
-        switch (currentView) {
-            case 'dashboard':
-                return <Dashboard kpis={kpis} appointments={filteredAppointments} topServices={topServices} selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth} settings={settings} />;
-            case 'schedule':
-                return <Schedule appointments={appointments} services={services} clients={clients} professionals={professionals} actions={actions} showNotification={showNotification} professionalFilter={professionalScheduleFilter} setProfessionalFilter={setProfessionalScheduleFilter} settings={settings} />;
-            case 'services':
-                return <Services services={services} actions={actions} showNotification={showNotification} />;
-            case 'products':
-                return <Products products={products} clients={clients} actions={actions} showNotification={showNotification} />;
-            case 'professionals':
-                return <Professionals professionals={professionals} actions={actions} showNotification={showNotification} onViewSchedule={handleViewProfessionalSchedule} />;
-            case 'clients':
-                 return <Clients clientProfiles={clientProfiles} appointments={appointments} actions={actions} showNotification={showNotification} />;
-            case 'reports':
-                return <Reports 
-                    historicalData={historicalData} 
-                    fullData={{ kpis, services, appointments: filteredAppointments, expenses: filteredExpenses, professionals, settings }} 
-                    revenueByService={revenueByService} 
-                    selectedMonth={selectedMonth} 
-                    setSelectedMonth={setSelectedMonth} 
-                />;
-            case 'finance':
-                return <Finance expenses={filteredExpenses} appointments={filteredAppointments} kpis={kpis} actions={actions} showNotification={showNotification} selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth} historicalData={historicalData} />;
-            case 'settings':
-                return <Settings settings={settings} currentUserEmail={currentUserEmail} updateSettings={actions.updateSettings} showNotification={showNotification} onLogout={handleLogout} onExportData={handleExportData} onFactoryReset={actions.resetAllData} />;
-            case 'menu':
-                return <MobileMenuPage setCurrentView={setCurrentView} shopName={settings.shopName} shopLogoUrl={settings.shopLogoUrl} onLogout={handleLogout} />;
-            default:
-                return <Dashboard kpis={kpis} appointments={filteredAppointments} topServices={topServices} selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth} settings={settings} />;
+    const handleLoginSuccess = (rememberMe: boolean, identifier: string) => {
+        setIsAuthenticated(true);
+        setUserUid(identifier);
+        if (rememberMe) {
+            localStorage.setItem('effisync_session', 'active');
+            localStorage.setItem('effisync_current_user', identifier);
         }
     };
 
-    return (
-        <>
-            <style>{themeStyles}</style>
-            <div className="flex h-screen bg-gray-900 text-gray-200">
-                <Sidebar currentView={currentView} setCurrentView={setCurrentView} shopName={settings.shopName} shopLogoUrl={settings.shopLogoUrl} onLogout={handleLogout} />
-                <main className="flex-1 p-4 md:p-10 overflow-y-auto pb-20 md:pb-10">
-                    {renderView()}
-                </main>
-                <BottomNav currentView={currentView} setCurrentView={setCurrentView} />
-                {notification && <Notification message={notification} onClose={() => setNotification(null)} />}
+    const showNotification = (message: string) => setNotification(message);
+
+    if (isLoadingSession) {
+        return (
+            <div className="min-h-screen bg-[#0f172a] flex flex-col items-center justify-center space-y-4">
+                <div className="w-12 h-12 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
+                <p className="text-cyan-500 font-bold tracking-widest text-xs uppercase">Carregando EffiSync...</p>
             </div>
-        </>
+        );
+    }
+
+    if (!isAuthenticated) {
+        return <Login onLogin={handleLoginSuccess} shopLogoUrl={settings.shopLogoUrl} />;
+    }
+
+    return (
+        <div className="flex h-screen bg-gray-900 text-gray-200 overflow-hidden" style={{
+            backgroundColor: settings.theme?.backgroundColor || '#111827',
+            color: settings.theme?.textColor || '#e5e7eb'
+        }}>
+            <Sidebar currentView={currentView} setCurrentView={setCurrentView} shopName={settings.shopName} shopLogoUrl={settings.shopLogoUrl} onLogout={handleLogout} />
+            <main className="flex-1 p-4 md:p-10 overflow-y-auto pb-24 md:pb-10 bg-gray-900" style={{
+                backgroundColor: settings.theme?.backgroundColor || '#111827'
+            }}>
+                {currentView === 'dashboard' && <Dashboard kpis={kpis} appointments={filteredAppointments} topServices={topServices} selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth} settings={settings} />}
+                {currentView === 'schedule' && <Schedule appointments={appointments} services={services} clients={clients} professionals={professionals} actions={actions} showNotification={showNotification} professionalFilter={null} setProfessionalFilter={() => {}} settings={settings} />}
+                {currentView === 'clients' && <Clients clientProfiles={clientProfiles} appointments={appointments} actions={actions} showNotification={showNotification} />}
+                {currentView === 'services' && <Services services={services} actions={actions} showNotification={showNotification} />}
+                {currentView === 'products' && <Products products={products} clients={clients} actions={actions} showNotification={showNotification} />}
+                {currentView === 'professionals' && <Professionals professionals={professionals} actions={actions} showNotification={showNotification} onViewSchedule={(id) => setCurrentView('schedule')} />}
+                {currentView === 'reports' && <Reports historicalData={historicalData} fullData={{ kpis, services, appointments: filteredAppointments, expenses: filteredExpenses, professionals, settings }} revenueByService={revenueByService} selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth} />}
+                {currentView === 'finance' && <Finance expenses={filteredExpenses} appointments={filteredAppointments} kpis={kpis} actions={actions} showNotification={showNotification} selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth} historicalData={historicalData} />}
+                {currentView === 'settings' && <Settings settings={settings} currentUserEmail={auth?.currentUser?.email || userUid} updateSettings={actions.updateSettings} showNotification={showNotification} onLogout={handleLogout} onExportData={() => {}} onFactoryReset={actions.resetAllData} />}
+                {currentView === 'menu' && <MobileMenuPage setCurrentView={setCurrentView} shopName={settings.shopName} shopLogoUrl={settings.shopLogoUrl} onLogout={handleLogout} />}
+            </main>
+            <BottomNav currentView={currentView} setCurrentView={setCurrentView} />
+            {notification && <Notification message={notification} onClose={() => setNotification(null)} />}
+        </div>
     );
 };
 

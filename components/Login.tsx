@@ -15,393 +15,292 @@ const Login: React.FC<LoginProps> = ({ onLogin, shopLogoUrl }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  
-  // Forgot Password State
   const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
 
-  // Clear messages when switching modes
+  const isFirebaseActive = !!auth;
+
   useEffect(() => {
     setError('');
     setSuccessMessage('');
-    setEmail('');
-    setPassword('');
-    setConfirmPassword('');
-    setIsLoading(false);
   }, [isRegistering]);
 
   const isValidEmail = (email: string) => {
-      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setSuccessMessage('');
     setIsLoading(true);
 
-    // 1. Firebase Authentication (Real)
-    if (auth) {
+    if (isFirebaseActive) {
         try {
             if (isRegistering) {
-                // REGISTRATION
-                if (!email || !password || !confirmPassword) throw new Error('Preencha todos os campos.');
-                if (!isValidEmail(email)) throw new Error('Por favor, insira um email válido.');
+                if (!isValidEmail(email)) throw new Error('E-mail inválido.');
                 if (password !== confirmPassword) throw new Error('As senhas não coincidem.');
                 if (password.length < 6) throw new Error('A senha deve ter pelo menos 6 caracteres.');
-
                 await createUserWithEmailAndPassword(auth, email, password);
-                // Auth listener in App.tsx will handle the rest (redirect/state update)
-                // We set local flags just for immediate UI response if needed, but App.tsx drives the view
-                if (rememberMe) localStorage.setItem('effisync_session', 'active');
-                
+                setSuccessMessage('Conta criada com sucesso! Redirecionando...');
             } else {
-                // LOGIN
                 await signInWithEmailAndPassword(auth, email, password);
-                if (rememberMe) localStorage.setItem('effisync_session', 'active');
+                onLogin(rememberMe, auth.currentUser?.uid || email);
             }
         } catch (err: any) {
-            console.error("Firebase Auth Error:", err);
-            let msg = 'Ocorreu um erro. Tente novamente.';
-            
-            // Map Firebase errors to Portuguese
-            switch (err.code) {
-                case 'auth/email-already-in-use': msg = 'Este email já está cadastrado.'; break;
-                case 'auth/invalid-email': msg = 'Email inválido.'; break;
-                case 'auth/user-not-found': 
-                case 'auth/wrong-password': 
-                case 'auth/invalid-credential': msg = 'Email ou senha incorretos.'; break;
-                case 'auth/weak-password': msg = 'A senha é muito fraca.'; break;
-                case 'auth/network-request-failed': msg = 'Erro de conexão. Verifique sua internet.'; break;
-                case 'auth/too-many-requests': msg = 'Muitas tentativas. Tente novamente mais tarde.'; break;
-                default: if(err.message) msg = err.message;
-            }
+            console.error(err);
+            let msg = 'Erro na autenticação.';
+            if (err.code === 'auth/email-already-in-use') msg = 'Este email já está em uso.';
+            if (err.code === 'auth/invalid-credential') msg = 'Email ou senha incorretos.';
+            if (err.code === 'auth/weak-password') msg = 'Senha muito fraca.';
+            if (err.message) msg = err.message;
             setError(msg);
-            setIsLoading(false); 
-        }
-        return;
-    }
-
-    // 2. Local Storage Fallback (Only if Firebase is NOT configured)
-    setTimeout(() => {
-        const storedUsers = localStorage.getItem('effisync_users');
-        const users = storedUsers ? JSON.parse(storedUsers) : [];
-
-        if (isRegistering) {
-            if (!email || !password || !confirmPassword) { setError('Preencha todos os campos.'); setIsLoading(false); return; }
-            if (!isValidEmail(email)) { setError('Por favor, insira um email válido.'); setIsLoading(false); return; }
-            if (password !== confirmPassword) { setError('As senhas não coincidem.'); setIsLoading(false); return; }
-            if (password.length < 4) { setError('A senha deve ter pelo menos 4 caracteres.'); setIsLoading(false); return; }
-
-            const userExists = users.find((u: any) => u.email.toLowerCase() === email.toLowerCase());
-            if (userExists) { setError('Este email já está cadastrado (Local).'); setIsLoading(false); return; }
-
-            const newUser = { email, password: btoa(password) }; 
-            users.push(newUser);
-            localStorage.setItem('effisync_users', JSON.stringify(users));
-            
-            setSuccessMessage('Conta local criada! Faça login.');
-            setIsRegistering(false);
-            setEmail(''); setPassword(''); setConfirmPassword('');
+        } finally {
             setIsLoading(false);
+        }
+    } else {
+        // Fallback for Local Mode (Persistent Storage)
+        setTimeout(() => {
+            const storedUsers = localStorage.getItem('effisync_users');
+            const users = storedUsers ? JSON.parse(storedUsers) : [];
 
-        } else {
-            const validUser = users.find((u: any) => 
-                u.email.toLowerCase() === email.toLowerCase() && 
-                (u.password === password || u.password === btoa(password))
-            );
-            const isLegacyAdmin = users.length === 0 && email.toLowerCase() === 'admin' && password === 'admin';
-
-            if (validUser || isLegacyAdmin) {
-                onLogin(rememberMe, email);
+            if (isRegistering) {
+                if (users.some((u: any) => u.email === email)) {
+                    setError('Este e-mail já está cadastrado localmente.');
+                    setIsLoading(false);
+                    return;
+                }
+                const newUser = { email, password: btoa(password) };
+                users.push(newUser);
+                localStorage.setItem('effisync_users', JSON.stringify(users));
+                setSuccessMessage('Conta local criada com sucesso! Faça login.');
+                setIsRegistering(false);
             } else {
-                setError('Email ou senha incorretos (Local).');
+                const user = users.find((u: any) => u.email === email && (u.password === password || u.password === btoa(password)));
+                if (user || (email === 'admin' && password === 'admin')) {
+                    onLogin(rememberMe, email);
+                } else {
+                    setError('E-mail ou senha incorretos (Modo Local).');
+                }
             }
             setIsLoading(false);
-        }
-    }, 800);
-  };
-
-  const handleForgotPassword = async (e: React.FormEvent) => {
-      e.preventDefault();
-      
-      if (!auth) {
-          setError('A recuperação de senha requer a configuração do Firebase (Real Auth).');
-          return;
-      }
-
-      setIsLoading(true);
-      try {
-          await sendPasswordResetEmail(auth, forgotEmail);
-          setSuccessMessage(`Link enviado para ${forgotEmail}. Verifique sua caixa de entrada (e spam).`);
-          setForgotEmail('');
-          setTimeout(() => setIsForgotPasswordOpen(false), 6000);
-      } catch (err: any) {
-          console.error("Reset Password Error:", err);
-          let msg = 'Erro ao enviar email.';
-          
-          if (err.code === 'auth/user-not-found') {
-              // Check if user exists in local storage to give a better error message
-              const storedUsers = localStorage.getItem('effisync_users');
-              const localUsers = storedUsers ? JSON.parse(storedUsers) : [];
-              const localUser = localUsers.find((u: any) => u.email.toLowerCase() === forgotEmail.toLowerCase());
-              
-              if (localUser) {
-                  msg = 'Esta conta foi criada localmente. Registre-se novamente para ativar a recuperação de senha via email.';
-              } else {
-                  msg = 'Email não encontrado no sistema.';
-              }
-          } else if (err.code === 'auth/invalid-email') {
-              msg = 'Email inválido.';
-          } else if (err.code === 'auth/missing-email') {
-              msg = 'Digite um email.';
-          }
-          
-          setError(msg);
-      } finally {
-          setIsLoading(false);
-      }
+        }, 800);
+    }
   };
 
   const handleGoogleLogin = async () => {
-    if (!auth || !googleProvider) {
-        setError('Configuração do Firebase não encontrada. Verifique o arquivo .env.');
-        return;
-    }
-
+    if (!isFirebaseActive) return;
     setIsLoading(true);
+    setError('');
     try {
-        const result = await signInWithPopup(auth, googleProvider);
-        const user = result.user;
-        if (user && user.email) {
-            onLogin(true, user.email);
-        }
-    } catch (error: any) {
-        console.error("Google Login Error", error);
-        if (error.code === 'auth/popup-closed-by-user') {
-            setError('Login cancelado pelo usuário.');
-        } else if (error.code === 'auth/popup-blocked') {
-            setError('O popup foi bloqueado. Por favor, permita popups para este site e tente novamente.');
-        } else if (error.code === 'auth/configuration-not-found') {
-            setError('Autenticação Google não configurada no Firebase Console.');
+        await signInWithPopup(auth, googleProvider);
+        onLogin(true, auth.currentUser?.uid || auth.currentUser?.email || '');
+    } catch (err: any) {
+        console.error(err);
+        if (err.code === 'auth/popup-blocked') {
+            setError('O popup de login foi bloqueado pelo navegador.');
+        } else if (err.code === 'auth/popup-closed-by-user') {
+            setError('Login cancelado.');
         } else {
-            setError('Falha ao autenticar com o Google. Verifique sua conexão e configurações.');
+            setError('Falha ao entrar com Google.');
         }
     } finally {
         setIsLoading(false);
     }
   };
 
-  // Helper to check if Firebase is active
-  const isFirebaseActive = !!auth;
+  const handleDeleteLocalUser = () => {
+    const emailToDelete = forgotEmail.toLowerCase();
+    if (!window.confirm(`Tem certeza que deseja excluir o cadastro local de ${emailToDelete}? Isso apagará todos os dados salvos localmente vinculados a este e-mail.`)) {
+        return;
+    }
+
+    const storedUsers = localStorage.getItem('effisync_users');
+    if (storedUsers) {
+        const users = JSON.parse(storedUsers);
+        const filtered = users.filter((u: any) => u.email.toLowerCase() !== emailToDelete);
+        localStorage.setItem('effisync_users', JSON.stringify(filtered));
+        
+        // Clean up data prefix
+        const prefix = `local_${emailToDelete.replace(/[^a-zA-Z0-9]/g, '_')}`;
+        Object.keys(localStorage).forEach(key => {
+            if (key.startsWith(prefix)) localStorage.removeItem(key);
+        });
+
+        setSuccessMessage('Cadastro local removido. Agora você pode criar uma conta nova.');
+        setError('');
+    }
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setIsLoading(true);
+      setError('');
+      setSuccessMessage('');
+
+      if (!isFirebaseActive) {
+          setError('Recuperação de senha indisponível no modo local.');
+          setIsLoading(false);
+          return;
+      }
+
+      try {
+          await sendPasswordResetEmail(auth, forgotEmail);
+          setSuccessMessage('Link de recuperação enviado para seu email.');
+      } catch (err: any) {
+          console.error(err);
+          if (err.code === 'auth/user-not-found') {
+              const localUsers = JSON.parse(localStorage.getItem('effisync_users') || '[]');
+              if (localUsers.some((u: any) => u.email.toLowerCase() === forgotEmail.toLowerCase())) {
+                  setError('Esta conta foi criada localmente (Modo Local). Para usar o sistema online, você deve excluir o registro antigo.');
+              } else {
+                  setError('E-mail não encontrado.');
+              }
+          } else {
+              setError('Erro ao enviar link de recuperação.');
+          }
+      } finally {
+          setIsLoading(false);
+      }
+  };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-900">
-      <div className="w-full max-w-md p-8 space-y-8 bg-gray-800 rounded-lg shadow-lg animate-fade-in-down">
+    <div className="flex items-center justify-center min-h-screen bg-[#0f172a] selection:bg-cyan-500 selection:text-white">
+      <div className="w-full max-w-md p-8 bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl space-y-8">
         <div className="text-center">
-          <div className="flex flex-col items-center justify-center text-white text-3xl font-bold mb-4">
+          <div className="inline-block p-4 bg-gray-800 rounded-full mb-4 shadow-inner">
             {shopLogoUrl ? (
-                <img src={shopLogoUrl} alt="Logo" className="w-24 h-24 mb-4 rounded-full object-cover border-2 border-cyan-500 shadow-cyan-500/20 shadow-lg" />
+                <img src={shopLogoUrl} alt="Logo" className="w-16 h-16 rounded-full object-cover" />
             ) : (
-                <ScissorsIcon className="w-20 h-20 text-cyan-500 mb-4" />
+                <ScissorsIcon className="w-12 h-12 text-cyan-500" />
             )}
-            <span>EffiSync Manager</span>
           </div>
-          <p className="text-gray-400">
-            {isRegistering 
-                ? "Crie sua conta profissional." 
-                : "Bem-vindo de volta! Acesse sua conta."}
+          <h1 className="text-3xl font-extrabold text-white tracking-tight">EffiSync Manager</h1>
+          <p className="text-gray-400 mt-2 text-sm uppercase tracking-widest font-semibold">
+              {isFirebaseActive ? 'Acesso Profissional' : 'Modo Offline / Local'}
           </p>
-          {!isFirebaseActive && (
-              <p className="text-xs text-yellow-500 mt-2 bg-yellow-900/20 p-1 rounded">
-                  Modo Local (Sem backend configurado)
-              </p>
-          )}
         </div>
 
-        <form className="space-y-6" onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label htmlFor="email" className="text-sm font-medium text-gray-300">Email</label>
+            <label className="text-xs font-bold text-gray-500 uppercase ml-1">E-mail</label>
             <input
-              id="email"
-              name="email"
               type="email"
-              autoComplete="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-cyan-500 disabled:opacity-50"
-              placeholder="seu@email.com"
-              disabled={isLoading}
+              className="w-full px-4 py-3 mt-1 text-white bg-gray-800 border border-gray-700 rounded-xl focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all outline-none"
+              placeholder="barbeiro@exemplo.com"
             />
           </div>
 
           <div>
-            <div className="flex justify-between items-center">
-                 <label htmlFor="password"  className="text-sm font-medium text-gray-300">Senha</label>
+            <div className="flex justify-between items-center ml-1">
+                 <label className="text-xs font-bold text-gray-500 uppercase">Senha</label>
                  {!isRegistering && (
-                     <button 
-                        type="button" 
-                        onClick={() => setIsForgotPasswordOpen(true)}
-                        className="text-xs text-cyan-400 hover:text-cyan-300"
-                    >
-                        Esqueceu a senha?
-                    </button>
+                     <button type="button" onClick={() => setIsForgotPasswordOpen(true)} className="text-xs text-cyan-500 hover:text-cyan-400 font-bold">Esqueceu?</button>
                  )}
             </div>
             <input
-              id="password"
-              name="password"
               type="password"
-              autoComplete={isRegistering ? "new-password" : "current-password"}
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-cyan-500 disabled:opacity-50"
-              placeholder="******"
-              disabled={isLoading}
+              className="w-full px-4 py-3 mt-1 text-white bg-gray-800 border border-gray-700 rounded-xl focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all outline-none"
+              placeholder="••••••••"
             />
           </div>
 
           {isRegistering && (
-            <div className="animate-fade-in">
-                <label htmlFor="confirmPassword"  className="text-sm font-medium text-gray-300">Confirmar Senha</label>
+            <div className="animate-fade-in-down">
+                <label className="text-xs font-bold text-gray-500 uppercase ml-1">Confirmar Senha</label>
                 <input
-                id="confirmPassword"
-                name="confirmPassword"
-                type="password"
-                autoComplete="new-password"
-                required
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full px-3 py-2 mt-1 text-white bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-cyan-500 disabled:opacity-50"
-                placeholder="******"
-                disabled={isLoading}
+                    type="password"
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full px-4 py-3 mt-1 text-white bg-gray-800 border border-gray-700 rounded-xl focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all outline-none"
+                    placeholder="••••••••"
                 />
             </div>
           )}
 
-          {!isRegistering && (
-             <div className="flex items-center">
-                <input
-                    id="remember-me"
-                    name="remember-me"
-                    type="checkbox"
-                    checked={rememberMe}
-                    onChange={(e) => setRememberMe(e.target.checked)}
-                    className="h-4 w-4 text-cyan-600 focus:ring-cyan-500 border-gray-600 rounded bg-gray-700"
-                    disabled={isLoading}
-                />
-                <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-300">
-                    Lembrar de mim
-                </label>
-            </div>
-          )}
+          {error && <div className="p-3 text-xs text-red-400 bg-red-900/20 border border-red-500/50 rounded-lg">{error}</div>}
+          {successMessage && <div className="p-3 text-xs text-green-400 bg-green-900/20 border border-green-500/50 rounded-lg">{successMessage}</div>}
 
-          {error && (
-            <p className="text-sm text-center text-red-400 bg-red-900/20 p-2 rounded border border-red-500/50 animate-fade-in">{error}</p>
-          )}
-          
-          {successMessage && (
-            <p className="text-sm text-center text-green-400 bg-green-900/20 p-2 rounded border border-green-500/50 animate-fade-in">{successMessage}</p>
-          )}
-
-          <div>
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-cyan-600 hover:bg-cyan-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-cyan-500 transition-colors disabled:bg-cyan-800 disabled:cursor-wait"
-            >
-              {isLoading ? (
-                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-              ) : null}
-              {isLoading ? 'Processando...' : (isRegistering ? 'Cadastrar Conta' : 'Acessar Sistema')}
-            </button>
-          </div>
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="w-full py-4 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-xl shadow-lg shadow-cyan-900/20 transition-all active:scale-95 disabled:opacity-50 disabled:active:scale-100"
+          >
+            {isLoading ? 'Autenticando...' : (isRegistering ? 'Criar Minha Conta' : 'Entrar no Sistema')}
+          </button>
         </form>
-        
-        <div className="text-center text-sm">
-            <p className="text-gray-400">
-                {isRegistering ? "Já tem uma conta?" : "Não tem uma conta?"}{" "}
-                <button 
-                    type="button"
-                    onClick={() => setIsRegistering(!isRegistering)}
-                    className="text-cyan-400 hover:text-cyan-300 font-medium hover:underline focus:outline-none"
-                    disabled={isLoading}
-                >
-                    {isRegistering ? "Faça Login" : "Criar conta grátis"}
-                </button>
-            </p>
-        </div>
 
-        {!isRegistering && (
+        {isFirebaseActive && !isRegistering && (
             <>
-                <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-gray-600" />
-                </div>
-                <div className="relative flex justify-center text-sm">
-                    <span className="px-2 text-gray-400 bg-gray-800">OU</span>
-                </div>
+                <div className="relative flex items-center py-2">
+                    <div className="flex-grow border-t border-gray-800"></div>
+                    <span className="flex-shrink mx-4 text-gray-600 text-xs font-bold uppercase">Ou</span>
+                    <div className="flex-grow border-t border-gray-800"></div>
                 </div>
 
-                <div>
                 <button
                     type="button"
                     onClick={handleGoogleLogin}
-                    disabled={isLoading || !isFirebaseActive}
-                    className="w-full flex justify-center items-center px-4 py-2 font-medium text-white bg-gray-700 border border-gray-600 rounded-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-gray-500 transition-colors disabled:opacity-50"
+                    disabled={isLoading}
+                    className="w-full flex items-center justify-center py-3 bg-white hover:bg-gray-100 text-gray-900 font-bold rounded-xl transition-all disabled:opacity-50"
                 >
                     <GoogleIcon className="w-5 h-5 mr-3" />
                     Entrar com Google
                 </button>
-                </div>
             </>
         )}
+
+        <p className="text-center text-sm text-gray-500">
+            {isRegistering ? 'Já possui conta?' : 'Novo por aqui?'} 
+            <button onClick={() => setIsRegistering(!isRegistering)} className="ml-1 text-cyan-500 font-bold hover:underline">
+                {isRegistering ? 'Faça login' : 'Começar agora'}
+            </button>
+        </p>
       </div>
 
-      {/* Forgot Password Modal */}
       <Modal isOpen={isForgotPasswordOpen} onClose={() => setIsForgotPasswordOpen(false)} title="Recuperar Senha">
           <form onSubmit={handleForgotPassword} className="space-y-4">
-              <p className="text-gray-300 text-sm">
-                  Digite seu email abaixo e enviaremos um link oficial para você redefinir sua senha.
-              </p>
-              {!isFirebaseActive && (
-                  <p className="text-red-400 text-xs bg-red-900/20 p-2 rounded">
-                      Erro: Configuração do Firebase não detectada. O envio de email não funcionará.
-                  </p>
+              <p className="text-gray-400 text-sm">Insira seu e-mail para receber um link de redefinição de senha.</p>
+              
+              {error && (
+                  <div className="p-3 text-xs text-red-400 bg-red-900/20 border border-red-500/50 rounded-lg">
+                      <p>{error}</p>
+                      {error.includes('criada localmente') && (
+                          <button 
+                            type="button" 
+                            onClick={handleDeleteLocalUser}
+                            className="mt-3 w-full bg-red-600 text-white font-bold py-2 rounded-lg hover:bg-red-700"
+                          >
+                            Excluir Cadastro Local
+                          </button>
+                      )}
+                  </div>
               )}
-              <div>
-                  <label htmlFor="forgotEmail" className="block text-sm font-medium text-gray-300 mb-1">Email Cadastrado</label>
-                  <input
-                    id="forgotEmail"
-                    type="email"
-                    required
-                    value={forgotEmail}
-                    onChange={(e) => setForgotEmail(e.target.value)}
-                    className="w-full bg-gray-700 text-white p-2 rounded-md border border-gray-600 focus:ring-cyan-500 focus:border-cyan-500"
-                    placeholder="seu@email.com"
-                  />
-              </div>
-              <div className="flex justify-end space-x-3 pt-2">
-                  <button type="button" onClick={() => setIsForgotPasswordOpen(false)} className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-500">
-                      Cancelar
-                  </button>
-                  <button 
-                    type="submit" 
-                    disabled={isLoading || !isFirebaseActive}
-                    className="bg-cyan-600 text-white px-4 py-2 rounded-lg hover:bg-cyan-700 flex items-center disabled:bg-cyan-800 disabled:cursor-not-allowed"
-                  >
-                      {isLoading && <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>}
-                      Enviar Link
+              {successMessage && <div className="p-3 text-xs text-green-400 bg-green-900/20 border border-green-500/50 rounded-lg">{successMessage}</div>}
+
+              <input
+                type="email"
+                required
+                value={forgotEmail}
+                onChange={(e) => setForgotEmail(e.target.value)}
+                className="w-full bg-gray-800 text-white p-3 rounded-xl border border-gray-700 outline-none focus:ring-2 focus:ring-cyan-500"
+                placeholder="seu@email.com"
+              />
+              <div className="flex justify-end space-x-3">
+                  <button type="button" onClick={() => setIsForgotPasswordOpen(false)} className="px-4 py-2 text-gray-400 hover:text-white transition-colors">Cancelar</button>
+                  <button type="submit" disabled={isLoading} className="px-6 py-2 bg-cyan-600 text-white font-bold rounded-xl hover:bg-cyan-500 transition-colors disabled:opacity-50">
+                      {isLoading ? 'Enviando...' : 'Enviar Link'}
                   </button>
               </div>
           </form>
